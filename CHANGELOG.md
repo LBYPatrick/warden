@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.1.0] - 2026-03-16
+
+### Added
+- `warden mole` subcommand group for system cleanup and optimization powered by tw93/mole (macOS only)
+- `warden mole clean`, `optimize`, `analyze`, `status` subcommands with `--dry-run` and `--json` support
+- Auto-install Mole via Homebrew when not found on macOS
+- Man page (`man warden`) installed automatically by `make install`
+- Curl-installable `scripts/remote-install.sh` for one-line installation
+
+### Changed
+- Backup/restore now use `-m` flag with comma-delimited modules (`git`, `ssh`, `pkg`, or `all`); defaults to `all`
+- Archive marker stores a modules list instead of a single type string (backward-compatible with legacy archives)
+- Restore validates that each requested module exists in the archive before proceeding
+- `backup` now re-scans system packages by default when `pkg` module is included; use `--skip-scan` to disable (replaces `-s`/`--scan`)
+
+### Fixed
+- Backup archives now save to the user's current directory instead of the project root
+- Backup output messages now show the absolute path to the created archive
+
 ## [1.0.0] - 2026-03-15
 
 ### Added

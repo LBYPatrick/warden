@@ -20,13 +20,15 @@ warden/
   cli.py            # Command implementations (switch, list, show, scan, apply, install, update)
   config.py         # JSON5 config loading, resolution, merge algorithm
   display.py        # Rich-powered terminal output (respects WARDEN_NO_COLOR)
-  backup.py         # Backup/restore for git identities and SSH config
+  backup.py         # Backup/restore for git identities, SSH config, and packages
+  mole.py           # Mole integration (system cleanup, macOS only)
   ssh_config.py     # SSH config parser, serializer, merge engine
   scanner.py        # Package manager scanning (brew, apt, dnf, cargo, npm, pnpm, pipx, etc.)
   installer.py      # Package installation with skip-if-present logic
   cn.py             # China mirror URL rewrites and env vars (WARDEN_USE_CN)
   platform_info.py  # OS/arch detection
 bin/warden          # Bash wrapper → uv run python -m warden
+man/                # Man page (warden.1)
 completions/        # Bash + Zsh tab-completion scripts
 scripts/            # install.sh, uninstall.sh, install-formatter.sh
 tests/              # Pytest suite (conftest.py + test_*.py)
@@ -45,7 +47,7 @@ Conventional Commits format: `<type>(<scope>): <summary>`
 | `test` | Adding/updating tests |
 | `chore` | Tooling, config, release prep |
 
-Scopes: `cli`, `config`, `backup`, `scanner`, `installer`, `cn`, `display`.
+Scopes: `cli`, `config`, `backup`, `mole`, `scanner`, `installer`, `cn`, `display`.
 
 Example: `feat(scanner): add flatpak package scanning`
 
@@ -107,7 +109,8 @@ Bump in **all three** locations:
 
 - No runtime deps beyond json5 + rich — scanning/installing via subprocess
 - Cross-platform paths via `Path.home()`, never hardcoded
-- `backup git`/`backup ssh` exclude packages; only `backup all` includes full config
-- `--scan`/`-s` on `backup all` optionally refreshes packages before archiving
+- Backup/restore use `-m` flag: `git`, `ssh`, `pkg` (comma-delimited) or `all`; archive marker stores modules list
+- Backup auto-scans packages when `pkg` module included; `--skip-scan` disables this
+- Mole integration (`warden mole`) is macOS-only — hidden from CLI on Linux, guarded at runtime
 - `warden install` validates manager against current OS platform (unless `--any`)
 - Argparse help colorized via `_ColorHelpFormatter` post-processing with ANSI regexes

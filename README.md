@@ -6,38 +6,47 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-LGPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
 </p>
 
 ---
 
-## Overview
+Warden captures your development environment — git identities, SSH configs, system packages, and developer tools — into a single JSON5 config file. Switch identities, snapshot installed software, apply configs to a fresh machine, back everything up into portable archives, and keep your system clean.
 
-Warden captures your development environment — git identities, SSH configs, system packages, and developer tools — into a single config file. Switch identities, snapshot installed software, apply configs to a fresh machine, and back everything up into portable archives.
-
-- **Identity** — switch git identity (name, email, signing key) in one step
+- **Identity** — switch git identity (name, email, signing key, SSH command) in one step
 - **Packages** — scan, install, and apply across 14 package managers
-- **Backup** — portable `.tar.gz` archives with smart merge on restore
+- **Backup** — portable `.tar.gz` archives with module selection and smart merge on restore
+- **Maintenance** — system cleanup and optimization via [Mole](https://github.com/tw93/mole) (macOS) — we love it
 - **China mirrors** — `WARDEN_USE_CN=1` routes all downloads through CN-accessible mirrors
 
 ---
 
 ## Quick Start
 
+**One-line install:**
+
 ```bash
-git clone git@github.com:LBYPatrick/warden.git ~/code/warden
-cd ~/code/warden
+curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh | bash
+```
+
+**Or clone manually:**
+
+```bash
+git clone https://github.com/LBYPatrick/warden.git ~/.warden/repo
+cd ~/.warden/repo
 make install
 ```
 
+**Then:**
+
 ```bash
-warden pkg scan                          # snapshot system packages into config
-warden id switch personal                # apply a git identity
-warden pkg apply                         # install missing packages from config
-warden backup all -o ~/backup.tar.gz     # backup everything
-warden restore all ~/backup.tar.gz       # restore on a new machine
+warden pkg scan                    # snapshot system packages into config
+warden id switch personal          # apply a git identity
+warden pkg apply                   # install missing packages from config
+warden backup -o ~/backup.tar.gz   # backup everything
+warden restore ~/backup.tar.gz     # restore on a new machine
 ```
 
 ---
@@ -53,14 +62,14 @@ warden restore all ~/backup.tar.gz       # restore on a new machine
 
 ## Config
 
-Create `warden.jsonc` at one of these locations (first found wins):
+Warden searches for `warden.jsonc` in this order (first found wins):
 
 1. `~/.warden/warden.jsonc`
 2. `~/.ssh/warden.jsonc`
 3. `~/warden.jsonc`
 4. `./warden.jsonc`
 
-Or pass `-c <path>` to use an explicit file.
+Or pass `-c <path>` for an explicit file.
 
 ```jsonc
 {
@@ -96,7 +105,7 @@ warden id show               # show current git identity
 warden id show <target>      # show a specific target
 ```
 
-Each switch auto-configures `user.name`, `user.email`, `user.signingkey`, `core.sshCommand`, `gpg.format=ssh`, and `commit.gpgsign=true`.
+Each switch configures `user.name`, `user.email`, `user.signingkey`, `core.sshCommand`, `gpg.format=ssh`, and `commit.gpgsign=true`.
 
 ### Packages (`warden pkg`)
 
@@ -107,15 +116,16 @@ warden pkg apply --force     # reinstall everything
 warden pkg install MGR:PKG   # install via any manager
 ```
 
-`pkg install` uses `manager:package` syntax and shows available managers when run with no args:
+`pkg install` uses `manager:package` syntax:
 
 ```bash
-warden pkg install brew:ripgrep cask:firefox cargo:bat npm:typescript
+warden pkg install brew:ripgrep cask:firefox cargo:bat
 warden pkg install --save brew:fd     # also adds to warden.jsonc
 warden pkg install --any apt:curl     # bypass OS platform check
 ```
 
-**Supported package managers:**
+<details>
+<summary><strong>Supported package managers (14)</strong></summary>
 
 | Manager | Platform | Config key |
 |---|---|---|
@@ -134,24 +144,56 @@ warden pkg install --any apt:curl     # bypass OS platform check
 | `pipx` | both | `packages.pipx.packages` |
 | `tool` | both | `tools` (dev tool slugs) |
 
+</details>
+
 ### Backup & Restore
 
+Use `-m` to select which modules to backup or restore. Defaults to `all`.
+
+| Module | What it includes |
+|---|---|
+| `git` | Identities + signing keys |
+| `ssh` | `~/.ssh/config` + identity keys |
+| `pkg` | Packages + tools from config |
+
 ```bash
-warden backup git              # identities + signing keys
-warden backup ssh              # ~/.ssh/config + identity keys
-warden backup all              # everything (git + SSH + packages + tools)
-warden backup all -s           # re-scan packages before archiving
+warden backup                         # backup everything (scans packages first)
+warden backup -m git                  # just identities + keys
+warden backup -m git,ssh              # identities + SSH config
+warden backup --skip-scan             # skip package re-scan
+warden backup -o ~/bak.tar.gz         # custom output path
 ```
 
 ```bash
-warden restore git <archive>   # restore to ~/.warden/ (merges config)
-warden restore ssh <archive>   # merge into ~/.ssh/config
-warden restore all <archive>   # restore everything
+warden restore ~/backup.tar.gz        # restore everything
+warden restore -m git ~/backup.tar.gz # restore just identities
+warden restore -m pkg ~/backup.tar.gz # restore just packages
 ```
 
-`backup git` and `backup ssh` exclude packages. Only `backup all` includes the full config. Use `--scan`/`-s` to refresh packages before archiving — without it, the curated list is preserved as-is.
+Restore validates that the archive contains each requested module. Merge on restore: identities override by name; package lists union-merged (sorted, deduplicated); SSH hosts updated by name, new ones appended.
 
-**Merge on restore:** identities override by name; package lists are union-merged (sorted, deduplicated); SSH hosts updated by name, new ones appended.
+### Maintenance (`warden mole`) — macOS only
+
+System cleanup and optimization powered by [Mole](https://github.com/tw93/mole) — we love it. Auto-installed via Homebrew if not already present.
+
+```bash
+warden mole clean              # deep system cleanup (caches, logs, temp files)
+warden mole optimize           # rebuild system databases and services
+warden mole analyze            # visual disk space explorer
+warden mole analyze /Volumes   # analyze a specific path
+warden mole status             # real-time system health dashboard
+warden mole status --json      # machine-readable JSON output
+```
+
+For additional features, run `mo` directly:
+
+```bash
+mo                             # interactive menu
+mo uninstall                   # smart app uninstaller
+mo purge                       # clean build artifacts (node_modules, target, etc.)
+mo installer                   # find and remove .dmg/.pkg/.zip installers
+mo touchid                     # configure Touch ID for sudo
+```
 
 ### Self-Update
 
@@ -168,6 +210,14 @@ warden update main             # pull from a specific branch
 | `--dry-run` | Preview changes without writing to disk |
 | `--no-color` | Disable colored output (also: `WARDEN_NO_COLOR=1`) |
 
+### Man Page
+
+```bash
+man warden
+```
+
+Installed automatically by `make install`.
+
 ### China Mirror Mode
 
 Set `WARDEN_USE_CN=1` to route downloads through CN-accessible mirrors:
@@ -180,6 +230,12 @@ Set `WARDEN_USE_CN=1` to route downloads through CN-accessible mirrors:
 | Node / npm / pnpm | npmmirror.com |
 | GitHub downloads | ghp.ci proxy |
 
+Works with remote install too:
+
+```bash
+WARDEN_USE_CN=1 curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh | bash
+```
+
 ---
 
 ## Project Structure
@@ -191,15 +247,17 @@ warden/
   config.py         # JSON5 config loading, resolution, merge algorithm
   display.py        # rich-powered output (respects WARDEN_NO_COLOR)
   backup.py         # backup/restore + archive marker logic
+  mole.py           # Mole integration (system cleanup, macOS only)
   ssh_config.py     # SSH config parser, serializer, merge engine
   scanner.py        # multi-manager package scanning
   installer.py      # multi-manager package installation
   cn.py             # China mirror URL rewrites and env vars
   platform_info.py  # OS/arch detection
 bin/warden          # bash wrapper (symlink-friendly)
+man/                # man page (warden.1)
 completions/        # bash + zsh tab-completion
 tests/              # pytest suite
-scripts/            # install, uninstall, formatter setup
+scripts/            # install, uninstall, remote-install, formatter setup
 ```
 
 ---
@@ -208,8 +266,8 @@ scripts/            # install, uninstall, formatter setup
 
 | Command | Description |
 |---|---|
-| `make install` | Install deps, symlink binary, set up completions |
-| `make uninstall` | Remove symlink and caches |
+| `make install` | Install deps, symlink binary, man page, completions |
+| `make uninstall` | Remove symlink, caches, man page, completions |
 | `make test` | Run pytest suite |
 | `make format` | Run ruff + beautysh |
 | `make build` | Verify the CLI runs |
@@ -252,9 +310,9 @@ Warden searches `~/.warden/warden.jsonc`, `~/.ssh/warden.jsonc`, `~/warden.jsonc
 </details>
 
 <details>
-<summary>Archive type mismatch on restore</summary>
+<summary>Module not found in archive on restore</summary>
 
-Each archive contains a `.warden-marker` file identifying its type (`git`, `ssh`, or `all`). Use `warden restore all` for combined archives, or the specific type for single-purpose ones.
+Each archive records which modules it contains. Use `warden backup` (defaults to all) to create a full archive. To restore specific modules, pass `-m git,pkg` etc. — the error message shows which modules are available in the archive.
 </details>
 
 <details>
