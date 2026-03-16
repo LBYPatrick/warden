@@ -5,13 +5,15 @@ _warden_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="switch list show scan apply install update backup restore"
+    local commands="id pkg backup restore update"
+    local id_commands="switch list show"
+    local pkg_commands="scan apply install"
     local backup_commands="git ssh all"
     local restore_commands="git ssh all"
 
     case "${cword}" in
         1)
-            COMPREPLY=($(compgen -W "${commands} --help -h -c --dry-run" -- "${cur}"))
+            COMPREPLY=($(compgen -W "${commands} --help -h -c --dry-run --no-color" -- "${cur}"))
             return
             ;;
     esac
@@ -41,21 +43,68 @@ _warden_completions() {
     done
 
     case "${subcmd}" in
-        switch | show)
-            # Try to get targets from warden list (parse output)
-            local targets
-            targets=$(warden list 2>/dev/null | grep -oP '(?<=◉ )\S+' | sed 's/\x1b\[[0-9;]*m//g')
-            if [[ -n "${targets}" ]]; then
-                COMPREPLY=($(compgen -W "${targets}" -- "${cur}"))
-            fi
-            return
-            ;;
-        backup)
+        id)
             # Determine sub-subcommand
             local sub2=""
             for ((i = subcmd_pos + 1; i < cword; i++)); do
                 case "${words[i]}" in
-                    git | ssh)
+                    switch | list | show)
+                        sub2="${words[i]}"
+                        break
+                        ;;
+                esac
+            done
+            if [[ -z "${sub2}" ]]; then
+                COMPREPLY=($(compgen -W "${id_commands} --help" -- "${cur}"))
+            else
+                case "${sub2}" in
+                    switch | show)
+                        # Try to get targets from warden id list
+                        local targets
+                        targets=$(warden id list 2>/dev/null | grep -oP '(?<=◉ )\S+' | sed 's/\x1b\[[0-9;]*m//g')
+                        if [[ -n "${targets}" ]]; then
+                            COMPREPLY=($(compgen -W "${targets}" -- "${cur}"))
+                        fi
+                        ;;
+                    list)
+                        COMPREPLY=($(compgen -W "--help" -- "${cur}"))
+                        ;;
+                esac
+            fi
+            return
+            ;;
+        pkg)
+            local sub2=""
+            for ((i = subcmd_pos + 1; i < cword; i++)); do
+                case "${words[i]}" in
+                    scan | apply | install)
+                        sub2="${words[i]}"
+                        break
+                        ;;
+                esac
+            done
+            if [[ -z "${sub2}" ]]; then
+                COMPREPLY=($(compgen -W "${pkg_commands} --help" -- "${cur}"))
+            else
+                case "${sub2}" in
+                    scan)
+                        COMPREPLY=($(compgen -W "--help" -- "${cur}"))
+                        ;;
+                    apply)
+                        COMPREPLY=($(compgen -W "-f --force --help" -- "${cur}"))
+                        ;;
+                    install)
+                        COMPREPLY=($(compgen -W "--save --any --help" -- "${cur}"))
+                        ;;
+                esac
+            fi
+            return
+            ;;
+        backup)
+            local sub2=""
+            for ((i = subcmd_pos + 1; i < cword; i++)); do
+                case "${words[i]}" in
+                    git | ssh | all)
                         sub2="${words[i]}"
                         break
                         ;;
@@ -85,7 +134,7 @@ _warden_completions() {
             local sub2=""
             for ((i = subcmd_pos + 1; i < cword; i++)); do
                 case "${words[i]}" in
-                    git | ssh)
+                    git | ssh | all)
                         sub2="${words[i]}"
                         break
                         ;;
@@ -94,28 +143,19 @@ _warden_completions() {
             if [[ -z "${sub2}" ]]; then
                 COMPREPLY=($(compgen -W "${restore_commands} --help" -- "${cur}"))
             else
-                # Complete file paths for the archive argument
                 _filedir 'tar.gz'
                 COMPREPLY+=($(compgen -W "--help" -- "${cur}"))
             fi
             return
             ;;
-        list | scan | update)
+        update)
             COMPREPLY=($(compgen -W "--help" -- "${cur}"))
-            return
-            ;;
-        apply)
-            COMPREPLY=($(compgen -W "-f --force --help" -- "${cur}"))
-            return
-            ;;
-        install)
-            COMPREPLY=($(compgen -W "--save --any --help" -- "${cur}"))
             return
             ;;
     esac
 
     # Default: top-level commands
-    COMPREPLY=($(compgen -W "${commands} --help -h -c --dry-run" -- "${cur}"))
+    COMPREPLY=($(compgen -W "${commands} --help -h -c --dry-run --no-color" -- "${cur}"))
 }
 
 complete -F _warden_completions warden
