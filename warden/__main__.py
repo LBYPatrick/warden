@@ -31,25 +31,55 @@ from warden.cn import detect_use_cn  # noqa: E402
 from warden.config import load_config, resolve_config_path  # noqa: E402
 
 
+def _color_enabled() -> bool:
+    return os.environ.get("WARDEN_NO_COLOR", "").strip().lower() not in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+# ANSI helpers for argparse (not rich markup — argparse writes raw to stdout)
+_B = lambda s: f"\033[1m{s}\033[0m" if _color_enabled() else s  # noqa: E731
+_C = lambda s: f"\033[36m{s}\033[0m" if _color_enabled() else s  # noqa: E731
+_D = lambda s: f"\033[2m{s}\033[0m" if _color_enabled() else s  # noqa: E731
+_G = lambda s: f"\033[32m{s}\033[0m" if _color_enabled() else s  # noqa: E731
+
+
+import re as _re  # noqa: E402
+
+
+def _colorize_help(text: str) -> str:
+    """Post-process argparse help text with ANSI colors."""
+    if not _color_enabled():
+        return text
+    # Bold section headers: "usage:", "positional arguments:", "options:", etc.
+    text = _re.sub(
+        r"^(usage:|positional arguments|options|optional arguments|available commands)(:?)",
+        lambda m: f"\033[1m{m.group(1)}{m.group(2)}\033[0m",
+        text,
+        flags=_re.MULTILINE,
+    )
+    # Cyan for flags: -x, --long-flag
+    text = _re.sub(
+        r"(?<=\s)(--?[a-zA-Z][\w-]*)",
+        lambda m: f"\033[36m{m.group(1)}\033[0m",
+        text,
+    )
+    # Dim metavars in ALL CAPS
+    text = _re.sub(
+        r"(?<=\s)([A-Z][A-Z_:]+(?:\.\.\.)?)(?=[\s,\]\)])",
+        lambda m: f"\033[2m{m.group(1)}\033[0m",
+        text,
+    )
+    return text
+
+
 class _ColorHelpFormatter(argparse.RawDescriptionHelpFormatter):
-    """Argparse formatter that colorizes output via rich when color is enabled."""
+    """Argparse formatter that post-processes help with ANSI colors."""
 
     def format_help(self) -> str:
-        text = super().format_help()
-        if os.environ.get("WARDEN_NO_COLOR", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        ):
-            return text
-        # Colorize section headers and the prog name
-        text = text.replace("usage:", "\033[1musage:\033[0m")
-        text = text.replace(
-            "positional arguments:", "\033[1mpositional arguments:\033[0m"
-        )
-        text = text.replace("options:", "\033[1moptions:\033[0m")
-        text = text.replace("optional arguments:", "\033[1moptional arguments:\033[0m")
-        return text
+        return _colorize_help(super().format_help())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -178,7 +208,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="backup git identities, SSH config, or both",
         description="Backup git identities, SSH config, or both into a tar.gz archive.",
     )
-    backup_sub = p_backup.add_subparsers(dest="backup_command", help="what to backup")
+    backup_sub = p_backup.add_subparsers(
+        dest="backup_command",
+        help="what to backup",
+        parser_class=lambda **kw: argparse.ArgumentParser(
+            **kw,
+            formatter_class=_ColorHelpFormatter,
+        ),
+    )
 
     p_backup_git = backup_sub.add_parser(
         "git",
@@ -243,7 +280,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Restore git identities, SSH config, or both from a warden backup archive.",
     )
     restore_sub = p_restore.add_subparsers(
-        dest="restore_command", help="what to restore"
+        dest="restore_command",
+        help="what to restore",
+        parser_class=lambda **kw: argparse.ArgumentParser(
+            **kw,
+            formatter_class=_ColorHelpFormatter,
+        ),
     )
 
     p_restore_git = restore_sub.add_parser(
