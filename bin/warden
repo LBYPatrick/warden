@@ -1,5 +1,5 @@
 #!/bin/bash
-# Warden — Config-driven Git identity switcher
+# Warden — Describe the system you live in
 # Resolve symlinks to find repo root
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -8,6 +8,13 @@ while [ -L "$SOURCE" ]; do
     [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 WARDEN_ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+# China mirror: set uv index when WARDEN_USE_CN is truthy
+case "${WARDEN_USE_CN:-}" in
+    1 | true | yes)
+        export UV_INDEX_URL="${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+        ;;
+esac
 
 cd "$WARDEN_ROOT" || exit 1
 exec uv run python -m warden "$@"

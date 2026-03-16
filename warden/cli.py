@@ -216,6 +216,7 @@ def cmd_apply(
     *,
     force: bool = False,
     dry_run: bool = False,
+    use_cn: bool = False,
 ) -> None:
     """Install packages and tools from warden.jsonc onto the system.
 
@@ -231,11 +232,14 @@ def cmd_apply(
 
     label = "Dry Run — " if dry_run else ""
     force_label = " (force)" if force else ""
-    display.banner(f"{label}Apply Config{force_label}")
+    cn_label = " [CN]" if use_cn else ""
+    display.banner(f"{label}Apply Config{force_label}{cn_label}")
     start = time.monotonic()
 
     platform = detect_platform()
     display.info(f"Platform: {display.bold(platform.value)}")
+    if use_cn:
+        display.info("China mirror mode enabled")
 
     pkgs = get_packages(config)
     tools_list = get_tools(config)
@@ -251,7 +255,7 @@ def cmd_apply(
         print()
         display.header(f"Homebrew formulae ({len(formulae)})")
         installed, skipped, failed = install_brew_formulae(
-            formulae, force=force, dry_run=dry_run
+            formulae, force=force, dry_run=dry_run, use_cn=use_cn
         )
         total_installed += installed
         total_skipped += skipped
@@ -265,7 +269,7 @@ def cmd_apply(
         print()
         display.header(f"Homebrew casks ({len(casks)})")
         installed, skipped, failed = install_brew_casks(
-            casks, force=force, dry_run=dry_run
+            casks, force=force, dry_run=dry_run, use_cn=use_cn
         )
         total_installed += installed
         total_skipped += skipped
@@ -292,7 +296,7 @@ def cmd_apply(
         print()
         display.header(f"Developer tools ({len(tools_list)})")
         installed, skipped, failed = install_tools(
-            tools_list, platform, force=force, dry_run=dry_run
+            tools_list, platform, force=force, dry_run=dry_run, use_cn=use_cn
         )
         total_installed += installed
         total_skipped += skipped
@@ -318,9 +322,12 @@ def cmd_apply(
         )
 
 
-def cmd_update(*, branch: str | None = None, dry_run: bool = False) -> None:
+def cmd_update(
+    *, branch: str | None = None, dry_run: bool = False, use_cn: bool = False
+) -> None:
     """Self-update warden by pulling latest from git and reinstalling."""
-    display.banner("Update Warden")
+    cn_label = " [CN]" if use_cn else ""
+    display.banner(f"Update Warden{cn_label}")
     start = time.monotonic()
 
     repo_root = Path(__file__).resolve().parent.parent
@@ -376,11 +383,19 @@ def cmd_update(*, branch: str | None = None, dry_run: bool = False) -> None:
 
     # Reinstall
     display.step(2, 2, "Reinstalling")
+    install_env = None
+    if use_cn:
+        import os
+
+        from warden.cn import UV_CN_ENV
+
+        install_env = {**os.environ, **UV_CN_ENV}
     result = subprocess.run(
         ["make", "install"],
         capture_output=True,
         text=True,
         cwd=repo_root,
+        env=install_env,
     )
     if result.returncode != 0:
         display.error(f"make install failed:\n{result.stderr.strip()}")

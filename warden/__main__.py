@@ -13,6 +13,7 @@ from warden.backup import (
     restore_ssh,
 )
 from warden.cli import cmd_apply, cmd_list, cmd_scan, cmd_show, cmd_switch, cmd_update
+from warden.cn import detect_use_cn
 from warden.config import load_config, resolve_config_path
 
 
@@ -197,6 +198,7 @@ def main() -> None:
         sys.exit(0)
 
     dry = args.dry_run
+    cn = detect_use_cn()
 
     match args.command:
         case "switch":
@@ -219,9 +221,9 @@ def main() -> None:
             cmd_scan(config, config_path, dry_run=dry)
         case "apply":
             config = load_config(args.c)
-            cmd_apply(config, force=args.force, dry_run=dry)
+            cmd_apply(config, force=args.force, dry_run=dry, use_cn=cn)
         case "update":
-            cmd_update(branch=args.branch, dry_run=dry)
+            cmd_update(branch=args.branch, dry_run=dry, use_cn=cn)
         case "backup":
             if not args.backup_command:
                 parser.parse_args(["backup", "--help"])

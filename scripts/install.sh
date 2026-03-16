@@ -81,12 +81,27 @@ echo -e "${BOLD}         Warden Installation${NC}"
 echo -e "${BOLD}===========================================${NC}"
 echo ""
 
+# China mirror support
+USE_CN=false
+case "${WARDEN_USE_CN:-}" in
+    1 | true | yes)
+        USE_CN=true
+        export UV_INDEX_URL="${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+        echo -e "  ${CYAN}▶${NC} China mirror mode enabled"
+        ;;
+esac
+
 # Step 1: Dependencies
 echo -e "${BOLD}[1/4] Dependencies${NC}"
 
 if ! command -v uv &>/dev/null; then
-    run_with_progress "Installing uv" "$STATUS_DIR/uv.log" \
-        bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+    if $USE_CN; then
+        run_with_progress "Installing uv (CN mirror)" "$STATUS_DIR/uv.log" \
+            bash -c 'curl -LsSf https://ghp.ci/https://astral.sh/uv/install.sh | sh'
+    else
+        run_with_progress "Installing uv" "$STATUS_DIR/uv.log" \
+            bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
+    fi
 else
     echo -e "  ${GREEN}✓${NC} uv already installed"
 fi

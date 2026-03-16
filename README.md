@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.0.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-LGPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
 </p>
@@ -194,6 +194,28 @@ warden update main           # pull from a specific branch
 | `-c PATH` | Override config file path |
 | `--dry-run` | Preview changes without writing to disk |
 
+### China Mirror Mode
+
+Set `WARDEN_USE_CN=1` to route all downloads through China-accessible mirrors:
+
+```bash
+WARDEN_USE_CN=1 warden apply         # install packages via CN mirrors
+WARDEN_USE_CN=1 warden update        # self-update via CN mirrors
+WARDEN_USE_CN=1 make install         # install warden itself via CN mirrors
+```
+
+Accepts `1`, `true`, or `yes` (case-insensitive). Affects:
+
+| What | Mirror |
+|---|---|
+| Homebrew bottles | USTC (`mirrors.ustc.edu.cn`) |
+| PyPI / uv index | Aliyun (`mirrors.aliyun.com`) |
+| Rust (rustup) | rsproxy.cn |
+| Node.js (fnm) | npmmirror.com |
+| npm registry | npmmirror.com |
+| GitHub downloads | ghp.ci proxy |
+| uv installer | ghp.ci proxy |
+
 ---
 
 ## Project Structure
@@ -208,6 +230,7 @@ warden/
   ssh_config.py     # SSH config parser, serializer, merge engine
   scanner.py        # system package/tool scanning (brew, apt, dev tools)
   installer.py      # package/tool installation with skip-if-present logic
+  cn.py             # China mirror URL rewrites and env vars
   platform_info.py  # OS/arch detection (macOS/Linux, amd64/arm64)
 bin/warden          # bash wrapper (symlink-friendly)
 completions/        # bash + zsh tab-completion

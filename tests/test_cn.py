@@ -44,7 +44,9 @@ class TestApplyCnRewrites:
         cmd = "git clone https://github.com/flutter/flutter.git"
         result = apply_cn_rewrites(cmd)
         assert "ghp.ci" in result
-        assert result == "git clone https://ghp.ci/https://github.com/flutter/flutter.git"
+        assert (
+            result == "git clone https://ghp.ci/https://github.com/flutter/flutter.git"
+        )
 
     def test_fnm_rewrite(self):
         cmd = "curl -fsSL https://fnm.vercel.app/install | bash"
