@@ -402,6 +402,12 @@ def cmd_install_list() -> None:
     )
     display.info("Example: warden install brew:ripgrep cask:firefox cargo:bat")
     print()
+    display.header("Options")
+    display.kv(display.cyan("--save"), "Also add installed packages to warden.jsonc")
+    display.kv(display.cyan("--any"), "Bypass OS platform check (allow any manager)")
+    display.kv(display.cyan("--no-color"), "Disable colored output")
+    display.kv(display.cyan("--dry-run"), "Preview without making changes")
+    print()
 
 
 def cmd_install(

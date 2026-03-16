@@ -1,14 +1,14 @@
 # Warden
 
-Config-driven system descriptor: Git identity switcher + system package tracker with backup/restore.
+System descriptor and identity switcher — manages git identities, SSH configs, and system packages from a unified `warden.jsonc` config.
 
 ## Quick Reference
 
 ```bash
 make install       # Install deps, symlink bin, set up completions
-make format        # Run ruff + beautysh (or: bash tidy.sh)
-make build         # Verify CLI runs
-make test          # Run tests (falls back to smoke test)
+make format        # ruff + beautysh (or: bash tidy.sh)
+make test          # pytest
+make build         # Smoke test (warden --help)
 make clean         # Remove .venv, caches, build artifacts
 ```
 
@@ -16,63 +16,98 @@ make clean         # Remove .venv, caches, build artifacts
 
 ```
 warden/
-  __main__.py       # argparse entry point — all subcommand definitions
-  cli.py            # switch, list, show, scan, apply, update implementations
-  config.py         # JSONC parsing, config resolution, merge algorithm, path helpers
-  display.py        # Sheriff-style ANSI output (TTY-aware, rich-powered)
-  backup.py         # backup/restore logic for git identities and SSH config
-  ssh_config.py     # SSH config parser, serializer, and merge engine
-  scanner.py        # System package/tool scanning (brew, apt, dev tools)
-  installer.py      # Package/tool installation (brew, apt, dev tool scripts)
-  platform_info.py  # OS/arch detection (macOS/Linux, amd64/arm64)
+  __main__.py       # Argparse CLI — all subcommands defined here
+  cli.py            # Command implementations (switch, list, show, scan, apply, install, update)
+  config.py         # JSON5 config loading, resolution, merge algorithm
+  display.py        # Rich-powered terminal output (respects WARDEN_NO_COLOR)
+  backup.py         # Backup/restore for git identities and SSH config
+  ssh_config.py     # SSH config parser, serializer, merge engine
+  scanner.py        # Package manager scanning (brew, apt, dnf, cargo, npm, pnpm, pipx, etc.)
+  installer.py      # Package installation with skip-if-present logic
+  cn.py             # China mirror URL rewrites and env vars (WARDEN_USE_CN)
+  platform_info.py  # OS/arch detection
 bin/warden          # Bash wrapper → uv run python -m warden
-completions/        # Bash and Zsh tab-completion scripts
+completions/        # Bash + Zsh tab-completion scripts
 scripts/            # install.sh, uninstall.sh, install-formatter.sh
+tests/              # Pytest suite (conftest.py + test_*.py)
 ```
 
-## Config Format (warden.jsonc)
+## Commit Messages
 
-New unified format with three sections:
+Conventional Commits format: `<type>(<scope>): <summary>`
 
-```jsonc
-{
-  "identities": {
-    "personal": { "name": "...", "email": "...", "signing_key": "~/.ssh/id_ed25519.pub" }
-  },
-  "packages": {
-    "brew": { "formulae": ["git"], "casks": ["firefox"] },
-    "apt": { "packages": ["curl"] }
-  },
-  "tools": ["rustup", "node"]
-}
-```
+| Type | When |
+|---|---|
+| `feat` | New user-facing functionality |
+| `fix` | Bug fix |
+| `refactor` | Code restructuring, no behavior change |
+| `docs` | Documentation only |
+| `test` | Adding/updating tests |
+| `chore` | Tooling, config, release prep |
 
-Legacy format (flat identity dict) is auto-detected and still supported for reads.
+Scopes: `cli`, `config`, `backup`, `scanner`, `installer`, `cn`, `display`.
 
-## Key Design Decisions
+Example: `feat(scanner): add flatpak package scanning`
 
-- **Zero runtime dependencies** beyond json5 + rich. All scanning/installing via subprocess.
-- **Cross-platform** — all paths use `Path.home()`, never hardcoded `/Users/` or `/home/`.
-- **Config search order** — `-c` flag > `~/.warden/warden.jsonc` > `~/.ssh/warden.jsonc` > `~/warden.jsonc` > `./warden.jsonc`.
-- **Backup scoping** — `backup git`/`backup ssh` exclude packages/tools. `backup all` includes everything.
-- **Merge algorithm** — On restore: identities override by name; packages/tools lists are union-merged (sorted, deduped).
-- **Skip redundancy** — `apply` skips already-installed packages unless `--force`.
-- **SSH config merge** — parse into Host blocks, update existing in-place by name, append new at end.
-- **Backup archives** — tar.gz with hashed key filenames (6-digit SHA256 of absolute path). Config paths rewritten to `~/.warden/keys/`.
-
-## Code Conventions
+## Code Style
 
 - Python 3.13+, formatted with ruff, shell scripts with beautysh
-- All user-facing output goes through `display.py` functions (success, error, warn, info, item, skip, header, kv, spinner)
+- Run `bash tidy.sh` or `make format` before committing
+- All user-facing output goes through `display.py` (success, error, warn, info, item, skip, header, kv, spinner, banner)
 - Errors: `display.error()` + `sys.exit(1)` — no exceptions for user-facing failures
-- Config loading always goes through `config.load_config()` which handles JSONC and error reporting
-- Identity lookups use `config.get_identities()` then `config.find_target()` (case-insensitive)
-- System scanning is synchronous (subprocess.run, not async)
+- Config loading: always `config.load_config()` → use `get_identities()`, `get_packages()`, `get_tools()` helpers
+- Identity lookups: `config.get_identities()` then `config.find_target()` (case-insensitive)
+- System scanning is synchronous (`subprocess.run`, not async)
+- Shell scripts: use `$'...'` ANSI color vars, respect `WARDEN_NO_COLOR`/`NO_COLOR` env
+
+## Config Format
+
+Search order: `~/.warden/warden.jsonc` > `~/.ssh/warden.jsonc` > `~/warden.jsonc` > `./warden.jsonc` > `-c <path>`.
+
+Three top-level sections: `identities`, `packages`, `tools`. Legacy flat format (identities at root) auto-detected.
+
+Merge algorithm (restore): identities override by name; all package lists union-merged (sorted, deduped); tools union-merged.
+
+## Environment Flags
+
+| Flag | Effect |
+|---|---|
+| `WARDEN_NO_COLOR=1` | Disable all colored output (Python + shell + Makefile) |
+| `WARDEN_USE_CN=1` | Route downloads through China-accessible mirrors |
+
+Both accept `1`, `true`, or `yes` (case-insensitive). `--no-color` CLI flag also works.
 
 ## Testing
 
 ```bash
-make test    # runs pytest
+make test                  # or: uv run python -m pytest tests/ -v
 ```
 
-Test files: `test_config.py`, `test_backup.py`, `test_ssh_config.py`, `test_display.py`, `test_scanner.py`
+Tests live in `tests/`. Fixtures in `conftest.py` (fake_keys, fake_warden_config, fake_ssh_config, fake_legacy_config). Write tests for new/modified code — fix code, not tests.
+
+## Pre-Commit Checklist
+
+1. `bash tidy.sh` — format passes
+2. `uv run ruff format --check .` — CI-identical check
+3. `uv run python -m pytest tests/ -v` — all tests pass
+4. `uv run python -m warden --help` — smoke test
+
+## Versioning
+
+Bump in **all three** locations:
+1. `VERSION`
+2. `pyproject.toml` → `version`
+3. `README.md` → badge URL (`version-X.Y.Z-blue`)
+
+## Changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/). Categories: Added, Changed, Fixed, Removed. Imperative verbs. Update `[Unreleased]` on every user-visible commit. On release, rename to `[X.Y.Z] - YYYY-MM-DD`.
+
+## Key Design Decisions
+
+- No runtime deps beyond json5 + rich — scanning/installing via subprocess
+- Cross-platform paths via `Path.home()`, never hardcoded
+- `backup git`/`backup ssh` exclude packages; only `backup all` includes full config
+- `--scan`/`-s` on `backup all` optionally refreshes packages before archiving
+- `warden install` validates manager against current OS platform (unless `--any`)
+- Argparse help colorized via `_ColorHelpFormatter` post-processing with ANSI regexes

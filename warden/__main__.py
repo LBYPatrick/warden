@@ -162,32 +162,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="reinstall all packages even if already present",
     )
 
-    # install
+    # install (add_help=False — both --help and no-args show cmd_install_list)
     p_install = sub.add_parser(
         "install",
+        add_help=False,
         help="install packages via any package manager",
-        description="Install packages using manager:package syntax. "
-        "Run with no arguments to list available managers.\n\n"
-        "Example: warden install brew:ripgrep cask:firefox cargo:bat",
     )
-    p_install.add_argument(
-        "packages",
-        nargs="*",
-        metavar="MANAGER:PKG",
-        help="packages to install (e.g. brew:ripgrep cask:firefox cargo:bat)",
-    )
-    p_install.add_argument(
-        "--save",
-        action="store_true",
-        default=False,
-        help="also add installed packages to warden.jsonc",
-    )
-    p_install.add_argument(
-        "--any",
-        action="store_true",
-        default=False,
-        help="bypass OS platform check (allow any manager)",
-    )
+    p_install.add_argument("packages", nargs="*", metavar="MANAGER:PKG")
+    p_install.add_argument("-h", "--help", action="store_true", default=False)
+    p_install.add_argument("--save", action="store_true", default=False)
+    p_install.add_argument("--any", action="store_true", default=False)
 
     # update
     p_update = sub.add_parser(
@@ -404,7 +388,7 @@ def main() -> None:
         case "install":
             from warden.cli import cmd_install, cmd_install_list
 
-            if not args.packages:
+            if not args.packages or args.help:
                 cmd_install_list()
             else:
                 config_path = resolve_config_path(args.c)
