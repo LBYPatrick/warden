@@ -221,6 +221,32 @@ def scan_npm_global_packages() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# pnpm (global packages)
+# ---------------------------------------------------------------------------
+
+
+def scan_pnpm_global_packages() -> list[str]:
+    """List globally installed pnpm packages."""
+    ok, output = _run(["pnpm", "list", "-g", "--depth=0", "--json"], timeout=15)
+    if not ok:
+        return []
+    import json
+
+    try:
+        data = json.loads(output)
+        # pnpm returns an array of store entries
+        if isinstance(data, list) and data:
+            deps = data[0].get("dependencies", {})
+        elif isinstance(data, dict):
+            deps = data.get("dependencies", {})
+        else:
+            return []
+        return sorted(deps.keys())
+    except (json.JSONDecodeError, AttributeError, IndexError):
+        return []
+
+
+# ---------------------------------------------------------------------------
 # pipx (Python CLI tools)
 # ---------------------------------------------------------------------------
 
@@ -348,6 +374,14 @@ _PKG_MANAGERS: list[tuple[str, str, str, callable, str, list[str]]] = [
         "npm (global)",
         "npm",
         scan_npm_global_packages,
+        "packages",
+        ["macos", "linux"],
+    ),
+    (
+        "pnpm",
+        "pnpm (global)",
+        "pnpm",
+        scan_pnpm_global_packages,
         "packages",
         ["macos", "linux"],
     ),

@@ -25,6 +25,7 @@ from warden.scanner import (
     scan_npm_global_packages,
     scan_pacman_packages,
     scan_pipx_packages,
+    scan_pnpm_global_packages,
     scan_snap_packages,
     scan_tools,
 )
@@ -421,6 +422,34 @@ def install_npm_global_packages(
         install_cmd=["npm", "install", "-g"],
         force=force,
         dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pnpm (global)
+# ---------------------------------------------------------------------------
+
+
+def install_pnpm_global_packages(
+    wanted: list[str],
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+    use_cn: bool = False,
+) -> tuple[int, int, list[str]]:
+    """Install pnpm global packages."""
+    extra_env = (
+        {"NPM_CONFIG_REGISTRY": "https://registry.npmmirror.com"} if use_cn else None
+    )
+    return _install_packages_generic(
+        wanted,
+        label="pnpm global",
+        binary="pnpm",
+        scan_fn=scan_pnpm_global_packages,
+        install_cmd=["pnpm", "add", "-g"],
+        force=force,
+        dry_run=dry_run,
+        extra_env=extra_env,
     )
 
 

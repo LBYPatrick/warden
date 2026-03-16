@@ -308,6 +308,13 @@ def cmd_apply(
     _CROSS_MANAGERS = [
         ("cargo", "Cargo", installer.install_cargo_packages),
         ("npm", "npm global", installer.install_npm_global_packages),
+        (
+            "pnpm",
+            "pnpm global",
+            lambda pkgs, **kw: installer.install_pnpm_global_packages(
+                pkgs, use_cn=use_cn, **kw
+            ),
+        ),
         ("pipx", "pipx", installer.install_pipx_packages),
     ]
     for key, name, install_fn in _CROSS_MANAGERS:
@@ -366,6 +373,7 @@ def cmd_install_list() -> None:
         ("flatpak", "Flatpak", "flatpak", ["linux"]),
         ("cargo", "Cargo (Rust)", "cargo", ["macos", "linux"]),
         ("npm", "npm (global)", "npm", ["macos", "linux"]),
+        ("pnpm", "pnpm (global)", "pnpm", ["macos", "linux"]),
         ("pipx", "pipx (Python)", "pipx", ["macos", "linux"]),
         ("tool", "Developer tools", None, ["macos", "linux"]),
     ]
@@ -499,6 +507,15 @@ def cmd_install(
             ["macos", "linux"],
             None,
         ),
+        "pnpm": (
+            lambda pkgs, **kw: installer.install_pnpm_global_packages(
+                pkgs, use_cn=use_cn, **kw
+            ),
+            "pnpm",
+            "packages",
+            ["macos", "linux"],
+            None,
+        ),
         "pipx": (
             installer.install_pipx_packages,
             "pipx",
@@ -530,6 +547,7 @@ def cmd_install(
         "flatpak": "flatpak",
         "cargo": "cargo",
         "npm": "npm",
+        "pnpm": "pnpm",
         "pipx": "pipx",
         "tool": "",  # tools don't need a single binary
     }

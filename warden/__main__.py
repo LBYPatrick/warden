@@ -1,11 +1,17 @@
 """Warden — Describe the system you live in."""
 
-import argparse
+import os
 import sys
-from pathlib import Path
 
-from warden import display
-from warden.backup import (
+# Pre-parse --no-color before any display imports so Console initializes correctly.
+if "--no-color" in sys.argv:
+    os.environ["WARDEN_NO_COLOR"] = "1"
+
+import argparse  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from warden import display  # noqa: E402
+from warden.backup import (  # noqa: E402
     backup_all,
     backup_git,
     backup_ssh,
@@ -13,15 +19,44 @@ from warden.backup import (
     restore_git,
     restore_ssh,
 )
-from warden.cli import cmd_apply, cmd_list, cmd_scan, cmd_show, cmd_switch, cmd_update
-from warden.cn import detect_use_cn
-from warden.config import load_config, resolve_config_path
+from warden.cli import (  # noqa: E402
+    cmd_apply,
+    cmd_list,
+    cmd_scan,
+    cmd_show,
+    cmd_switch,
+    cmd_update,
+)
+from warden.cn import detect_use_cn  # noqa: E402
+from warden.config import load_config, resolve_config_path  # noqa: E402
+
+
+class _ColorHelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """Argparse formatter that colorizes output via rich when color is enabled."""
+
+    def format_help(self) -> str:
+        text = super().format_help()
+        if os.environ.get("WARDEN_NO_COLOR", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        ):
+            return text
+        # Colorize section headers and the prog name
+        text = text.replace("usage:", "\033[1musage:\033[0m")
+        text = text.replace(
+            "positional arguments:", "\033[1mpositional arguments:\033[0m"
+        )
+        text = text.replace("options:", "\033[1moptions:\033[0m")
+        text = text.replace("optional arguments:", "\033[1moptional arguments:\033[0m")
+        return text
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="warden",
         description="Describe the system you live in",
+        formatter_class=_ColorHelpFormatter,
     )
     parser.add_argument(
         "-c",
@@ -35,8 +70,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="show what would be done without making any changes",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        default=False,
+        help="disable colored output (also: WARDEN_NO_COLOR=1)",
+    )
 
-    sub = parser.add_subparsers(dest="command", help="available commands")
+    sub = parser.add_subparsers(
+        dest="command",
+        help="available commands",
+        parser_class=lambda **kw: argparse.ArgumentParser(
+            **kw,
+            formatter_class=_ColorHelpFormatter,
+        ),
+    )
 
     # switch
     p_switch = sub.add_parser(
@@ -224,12 +272,66 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_main_help() -> None:
+    """Print colored help using rich."""
+    from warden.display import _console
+
+    _console.print()
+    _console.print("[bold]warden[/bold] — Describe the system you live in")
+    _console.print()
+    _console.print("[bold]Usage:[/bold]")
+    _console.print("  warden [dim]<command>[/dim] [dim][options][/dim]")
+    _console.print()
+    _console.print("[bold]Identity:[/bold]")
+    _console.print(
+        "  [cyan]switch[/cyan]  [dim]<target>[/dim]       Apply a git identity"
+    )
+    _console.print("  [cyan]list[/cyan]                  List available targets")
+    _console.print(
+        "  [cyan]show[/cyan]    [dim][target][/dim]       Show current or specific target config"
+    )
+    _console.print()
+    _console.print("[bold]Packages:[/bold]")
+    _console.print(
+        "  [cyan]scan[/cyan]                  Scan system, update packages/tools in config"
+    )
+    _console.print(
+        "  [cyan]apply[/cyan]   [dim][-f][/dim]           Install packages/tools from config"
+    )
+    _console.print(
+        "  [cyan]install[/cyan] [dim]MGR:PKG ...[/dim]   Install packages via any manager"
+    )
+    _console.print()
+    _console.print("[bold]Backup:[/bold]")
+    _console.print(
+        "  [cyan]backup[/cyan]  [dim]<git|ssh|all>[/dim]  Backup identities, SSH config, or both"
+    )
+    _console.print(
+        "  [cyan]restore[/cyan] [dim]<git|ssh|all>[/dim]  Restore from backup archive"
+    )
+    _console.print()
+    _console.print("[bold]System:[/bold]")
+    _console.print(
+        "  [cyan]update[/cyan]  [dim][branch][/dim]      Self-update warden from git"
+    )
+    _console.print()
+    _console.print("[bold]Global flags:[/bold]")
+    _console.print("  [dim]-c PATH[/dim]        Config file override")
+    _console.print("  [dim]--dry-run[/dim]      Preview without making changes")
+    _console.print("  [dim]--no-color[/dim]     Disable colored output")
+    _console.print()
+    _console.print(
+        "[dim]Run[/dim] warden <command> --help [dim]for details on a specific command.[/dim]"
+    )
+    _console.print()
+
+
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
     if args.command is None:
-        parser.print_help()
+        _print_main_help()
         sys.exit(0)
 
     dry = args.dry_run
