@@ -5,6 +5,7 @@ import io
 import json
 import sys
 import tarfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -327,15 +328,17 @@ def backup_git(
     dry_run: bool = False,
 ) -> None:
     """Backup warden.jsonc and all referenced signing keys."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Backing up git identities")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Backup Git Identities")
 
+    start = time.monotonic()
     out_path = Path(
         output or f"warden-git-backup-{datetime.now().strftime('%Y-%m-%d')}.tar.gz"
     )
     if out_path.exists() and not dry_run:
         display.warn(f"Overwriting {out_path}")
 
+    display.step(1, 2, "Collecting keys")
     modified_config, keys_to_add = _collect_git_keys(config_data)
     seen: set[str] = {a for _, a in keys_to_add}
 
@@ -346,6 +349,7 @@ def backup_git(
         )
         return
 
+    display.step(2, 2, "Creating archive")
     config_bytes = serialize_config(modified_config).encode("utf-8")
 
     with tarfile.open(str(out_path), "w:gz") as tar:
@@ -353,15 +357,17 @@ def backup_git(
         _add_bytes_to_tar(tar, "warden.jsonc", config_bytes)
         written = _add_keys_to_tar(tar, keys_to_add)
 
-    display.success(f"Archive created: {out_path}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Archive created: {out_path}", elapsed)
     display.info(f"{len(modified_config)} targets, {written} key files")
 
 
 def restore_git(archive_path: Path, *, dry_run: bool = False) -> None:
     """Restore git identities from a warden backup archive."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Restoring git identities")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Restore Git Identities")
 
+    start = time.monotonic()
     tar = _open_and_validate(archive_path, "git")
     with tar:
         if dry_run:
@@ -370,15 +376,18 @@ def restore_git(archive_path: Path, *, dry_run: bool = False) -> None:
             display.info(f"{key_count} key files (no changes made)")
             return
 
+        display.step(1, 2, "Extracting keys")
         key_count = _extract_keys(tar)
 
+        display.step(2, 2, "Writing config")
         config_dest = WARDEN_DIR / "warden.jsonc"
         with tar.extractfile(tar.getmember("warden.jsonc")) as src:
             if src:
                 config_dest.write_bytes(src.read())
         display.success(f"Config written to {config_dest}")
 
-    display.info(f"Restored {key_count} key files to {KEYS_DIR}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Restored {key_count} key files to {KEYS_DIR}", elapsed)
 
 
 # ---------------------------------------------------------------------------
@@ -393,15 +402,17 @@ def backup_ssh(
     dry_run: bool = False,
 ) -> None:
     """Backup ~/.ssh/config and all referenced identity keys."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Backing up SSH config")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Backup SSH Config")
 
+    start = time.monotonic()
     out_path = Path(
         output or f"warden-ssh-backup-{datetime.now().strftime('%Y-%m-%d')}.tar.gz"
     )
     if out_path.exists() and not dry_run:
         display.warn(f"Overwriting {out_path}")
 
+    display.step(1, 2, "Collecting keys")
     preamble, blocks, path_map, keys_to_add = _collect_ssh_keys(include_missing)
     seen: set[str] = {a for _, a in keys_to_add}
 
@@ -412,6 +423,7 @@ def backup_ssh(
         )
         return
 
+    display.step(2, 2, "Creating archive")
     rewritten_blocks = rewrite_identity_files(blocks, path_map)
     modified_config = serialize_ssh_config(preamble, rewritten_blocks)
 
@@ -420,15 +432,17 @@ def backup_ssh(
         _add_bytes_to_tar(tar, "ssh_config", modified_config.encode("utf-8"))
         written = _add_keys_to_tar(tar, keys_to_add)
 
-    display.success(f"Archive created: {out_path}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Archive created: {out_path}", elapsed)
     display.info(f"{len(path_map)} hosts with keys, {written} key files")
 
 
 def restore_ssh(archive_path: Path, *, dry_run: bool = False) -> None:
     """Restore SSH config and keys from a warden backup archive."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Restoring SSH config")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Restore SSH Config")
 
+    start = time.monotonic()
     tar = _open_and_validate(archive_path, "ssh")
     with tar:
         if dry_run:
@@ -451,8 +465,10 @@ def restore_ssh(archive_path: Path, *, dry_run: bool = False) -> None:
             display.info(f"{key_count} key files (no changes made)")
             return
 
+        display.step(1, 2, "Extracting keys")
         key_count = _extract_keys(tar)
 
+        display.step(2, 2, "Merging SSH config")
         with tar.extractfile(tar.getmember("ssh_config")) as src:
             if src:
                 restored_text = src.read().decode("utf-8")
@@ -461,7 +477,8 @@ def restore_ssh(archive_path: Path, *, dry_run: bool = False) -> None:
                 sys.exit(1)
 
     _merge_ssh_config(restored_text)
-    display.info(f"Restored {key_count} key files to {KEYS_DIR}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Restored {key_count} key files to {KEYS_DIR}", elapsed)
 
 
 def _merge_ssh_config(restored_text: str) -> None:
@@ -498,9 +515,10 @@ def backup_all(
     dry_run: bool = False,
 ) -> None:
     """Backup both git identities and SSH config into a single archive."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Backing up all (git + SSH)")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Backup All (Git + SSH)")
 
+    start = time.monotonic()
     out_path = Path(
         output or f"warden-all-backup-{datetime.now().strftime('%Y-%m-%d')}.tar.gz"
     )
@@ -508,9 +526,11 @@ def backup_all(
         display.warn(f"Overwriting {out_path}")
 
     # Collect git keys
+    display.step(1, 3, "Collecting git keys")
     modified_git_config, git_keys = _collect_git_keys(config_data)
 
     # Collect SSH keys
+    display.step(2, 3, "Collecting SSH keys")
     preamble, blocks, path_map, ssh_keys = _collect_ssh_keys(include_missing)
 
     all_keys = git_keys + ssh_keys
@@ -524,6 +544,7 @@ def backup_all(
         )
         return
 
+    display.step(3, 3, "Creating archive")
     git_config_bytes = serialize_config(modified_git_config).encode("utf-8")
     rewritten_blocks = rewrite_identity_files(blocks, path_map)
     ssh_config_text = serialize_ssh_config(preamble, rewritten_blocks)
@@ -534,7 +555,8 @@ def backup_all(
         _add_bytes_to_tar(tar, "ssh_config", ssh_config_text.encode("utf-8"))
         written = _add_keys_to_tar(tar, all_keys)
 
-    display.success(f"Archive created: {out_path}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Archive created: {out_path}", elapsed)
     display.info(
         f"{len(modified_git_config)} git targets, "
         f"{len(path_map)} SSH hosts, {written} key files"
@@ -543,9 +565,10 @@ def backup_all(
 
 def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
     """Restore both git identities and SSH config from a single archive."""
-    label = "dry run — " if dry_run else ""
-    display.header(f"{label}Restoring all (git + SSH)")
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Restore All (Git + SSH)")
 
+    start = time.monotonic()
     tar = _open_and_validate(archive_path, "all")
     with tar:
         if dry_run:
@@ -569,16 +592,17 @@ def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
             display.info(f"{key_count} key files (no changes made)")
             return
 
+        display.step(1, 3, "Extracting keys")
         key_count = _extract_keys(tar)
 
-        # Restore git config
+        display.step(2, 3, "Writing git config")
         config_dest = WARDEN_DIR / "warden.jsonc"
         with tar.extractfile(tar.getmember("warden.jsonc")) as src:
             if src:
                 config_dest.write_bytes(src.read())
         display.success(f"Git config written to {config_dest}")
 
-        # Read SSH config
+        display.step(3, 3, "Merging SSH config")
         with tar.extractfile(tar.getmember("ssh_config")) as src:
             if src:
                 restored_ssh = src.read().decode("utf-8")
@@ -587,4 +611,5 @@ def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
                 sys.exit(1)
 
     _merge_ssh_config(restored_ssh)
-    display.info(f"Restored {key_count} key files to {KEYS_DIR}")
+    elapsed = time.monotonic() - start
+    display.success_timed(f"Restored {key_count} key files to {KEYS_DIR}", elapsed)

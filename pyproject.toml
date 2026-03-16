@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Config-driven Git identity switcher with backup/restore"
 requires-python = ">=3.13"
 license = "LGPL-3.0-or-later"
-dependencies = []
+dependencies = [
+    "json5>=0.12.0",
+    "rich>=14.0.0",
+]
 
 [dependency-groups]
 dev = [

@@ -5,6 +5,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+BOLD='\033[1m'
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -15,7 +16,11 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo -e "${BLUE}▶${NC} Uninstalling Warden..."
+echo ""
+echo -e "${BOLD}===========================================${NC}"
+echo -e "${BOLD}         Warden Uninstall${NC}"
+echo -e "${BOLD}===========================================${NC}"
+echo ""
 
 # Remove symlink
 if [ -L /usr/local/bin/warden ]; then
@@ -39,5 +44,17 @@ fi
 rm -rf "$PROJECT_ROOT/__pycache__" "$PROJECT_ROOT/.ruff_cache" "$PROJECT_ROOT/warden/__pycache__"
 echo -e "  ${GREEN}✓${NC} Removed caches"
 
+# Remove completions
+if [ -L "${HOME}/.zsh/completions/_warden" ]; then
+    rm -f "${HOME}/.zsh/completions/_warden"
+    echo -e "  ${GREEN}✓${NC} Removed zsh completions"
+fi
+if [ -L "${HOME}/.local/share/bash-completion/completions/warden" ]; then
+    rm -f "${HOME}/.local/share/bash-completion/completions/warden"
+    echo -e "  ${GREEN}✓${NC} Removed bash completions"
+fi
+
 echo ""
-echo -e "  ${GREEN}✓${NC} Warden uninstalled"
+echo -e "${BOLD}===========================================${NC}"
+echo ""
+echo -e "${GREEN}${BOLD}Warden uninstalled!${NC}"

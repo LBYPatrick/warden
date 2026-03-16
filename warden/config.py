@@ -1,57 +1,16 @@
 """Config resolution and loading for Warden."""
 
-import json
-import re
 import sys
 from pathlib import Path
 from typing import Any
+
+import json5
 
 DEFAULT_SEARCH_PATHS = [
     Path.home() / ".ssh" / "warden.jsonc",
     Path.home() / "warden.jsonc",
     Path.cwd() / "warden.jsonc",
 ]
-
-
-def strip_jsonc_comments(text: str) -> str:
-    """Strip // line comments and /* */ block comments from JSONC text."""
-    # Remove block comments first
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    # Remove line comments (but not inside strings)
-    result = []
-    in_string = False
-    escape = False
-    i = 0
-    while i < len(text):
-        ch = text[i]
-        if escape:
-            result.append(ch)
-            escape = False
-            i += 1
-            continue
-        if ch == "\\" and in_string:
-            result.append(ch)
-            escape = True
-            i += 1
-            continue
-        if ch == '"' and not in_string:
-            in_string = True
-            result.append(ch)
-            i += 1
-            continue
-        if ch == '"' and in_string:
-            in_string = False
-            result.append(ch)
-            i += 1
-            continue
-        if not in_string and ch == "/" and i + 1 < len(text) and text[i + 1] == "/":
-            # Skip until end of line
-            while i < len(text) and text[i] != "\n":
-                i += 1
-            continue
-        result.append(ch)
-        i += 1
-    return "".join(result)
 
 
 def resolve_config_path(override: str | None = None) -> Path | None:
@@ -88,31 +47,27 @@ def load_config(override: str | None = None) -> dict[str, Any]:
 
     Exits with error if config not found or invalid.
     """
+    from warden import display
+
     path = resolve_config_path(override)
     if path is None:
         searched = [str(p.expanduser()) for p in DEFAULT_SEARCH_PATHS]
         if override:
             searched = [override]
-        print(
-            f"  \033[0;31m✗\033[0m Config not found. Searched:\n"
-            + "\n".join(f"    - {s}" for s in searched),
-            file=sys.stderr,
+        display.error(
+            "Config not found. Searched:\n" + "\n".join(f"    - {s}" for s in searched)
         )
         sys.exit(1)
 
     try:
         raw = path.read_text(encoding="utf-8")
-        stripped = strip_jsonc_comments(raw)
-        data = json.loads(stripped)
-    except (json.JSONDecodeError, OSError) as e:
-        print(f"  \033[0;31m✗\033[0m Failed to parse {path}: {e}", file=sys.stderr)
+        data = json5.loads(raw)
+    except (ValueError, OSError) as e:
+        display.error(f"Failed to parse {path}: {e}")
         sys.exit(1)
 
     if not isinstance(data, dict):
-        print(
-            f"  \033[0;31m✗\033[0m Config must be a JSON object, got {type(data).__name__}",
-            file=sys.stderr,
-        )
+        display.error(f"Config must be a JSON object, got {type(data).__name__}")
         sys.exit(1)
 
     return data
@@ -152,5 +107,5 @@ def resolve_ssh_command(signing_key: str) -> str | None:
 
 
 def serialize_config(data: dict[str, Any]) -> str:
-    """Serialize a config dict to pretty JSON."""
-    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    """Serialize a config dict to pretty JSON5."""
+    return json5.dumps(data, indent=2, ensure_ascii=False) + "\n"

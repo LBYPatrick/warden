@@ -1,20 +1,61 @@
-# Warden
+<h1 align="center">Warden</h1>
 
-Config-driven Git identity switcher with backup/restore. Manage multiple Git identities and SSH configs from JSONC config files, back them up with keys into portable archives, and restore them on any machine.
+<p align="center">
+  <strong>Config-driven Git identity switcher with portable backup/restore</strong>
+</p>
 
-## Install
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.13+-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/version-0.1.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/license-LGPL--3.0-green" alt="License" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
+</p>
+
+---
+
+## Overview
+
+Warden manages multiple Git identities and SSH configurations from a single JSON5 config file. Switch between identities with one command, and back everything up — configs, signing keys, SSH keys — into portable archives that restore on any machine.
+
+- **Switch** git identity (name, email, signing key, SSH command) in one step
+- **Backup** git identities, SSH config, or both into a single `.tar.gz`
+- **Restore** from archive with automatic SSH config merging
+- **Cross-platform** — macOS and Linux via `Path.home()`
+
+---
+
+## Tech Stack
+
+- **Python 3.13+** (managed via [uv](https://github.com/astral-sh/uv))
+- **json5** — JSON5/JSONC config parsing (comments, trailing commas)
+- **rich** — Terminal output with automatic color and TTY handling
+
+---
+
+## Quick Start
 
 ```bash
+git clone git@github.com:LBYPatrick/warden.git ~/code/warden
+cd ~/code/warden
 make install
 ```
 
-This installs Python dependencies via [uv](https://github.com/astral-sh/uv), symlinks `warden` to `/usr/local/bin`, and sets up shell completions (bash/zsh).
-
-### Uninstall
-
 ```bash
-make uninstall
+warden switch personal                   # apply a git identity
+warden backup all -o ~/keys.tar.gz       # backup everything
+warden restore all ~/keys.tar.gz         # restore on a new machine
 ```
+
+---
+
+## Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.13+ | Runtime |
+| [uv](https://github.com/astral-sh/uv) | latest | Auto-installed by `make install` if missing |
+
+---
 
 ## Config
 
@@ -22,11 +63,9 @@ Create `warden.jsonc` at one of these locations (first found wins):
 
 1. `~/.ssh/warden.jsonc`
 2. `~/warden.jsonc`
-3. `./warden.jsonc` (current directory)
+3. `./warden.jsonc`
 
-Or pass an explicit path with `-c <path>`.
-
-### Format
+Or pass `-c <path>` to use an explicit file.
 
 ```jsonc
 {
@@ -34,46 +73,38 @@ Or pass an explicit path with `-c <path>`.
   "personal": {
     "name": "Your Name",
     "email": "you@example.com",
-    "signing_key": "~/.ssh/id_ed25519.pub"
+    "signing_key": "~/.ssh/id_ed25519.pub",
   },
   "work": {
     "name": "Work Name",
-    "email": "you@company.com",
-    "signing_key": "~/.ssh/id_ed25519_work.pub"
+    "email": "work@company.com",
+    "signing_key": "~/.ssh/id_ed25519_work.pub",
   }
 }
 ```
 
-Each target maps to these git config values:
+Each target auto-configures:
 
-| Field | Git Config | Notes |
+| Config Field | Git Config | Behavior |
 |---|---|---|
-| `name` | `user.name` | |
-| `email` | `user.email` | |
-| `signing_key` | `user.signingkey` | Path to `.pub` file |
-| *(derived)* | `core.sshCommand` | Auto-derived from `signing_key` — strips `.pub` for private key path. Default key (`~/.ssh/id_ed25519`) leaves `core.sshCommand` unset; non-default keys set `ssh -o IdentitiesOnly=yes -i <private_key>` |
+| `name` | `user.name` | Set directly |
+| `email` | `user.email` | Set directly |
+| `signing_key` | `user.signingkey` | Expanded path |
+| *(derived)* | `core.sshCommand` | `ssh -o IdentitiesOnly=yes -i <key>` for non-default keys; unset for `~/.ssh/id_ed25519` |
+| *(auto)* | `gpg.format` | Set to `ssh` |
+| *(auto)* | `commit.gpgsign` | Set to `true` |
 
-Switching also enables SSH commit signing (`gpg.format=ssh`, `commit.gpgsign=true`).
+---
 
 ## Usage
 
-### Identity switching
+### Identity Management
 
 ```bash
-# Switch to a git identity
-warden switch personal
-
-# List all available targets
-warden list
-
-# Show current git identity
-warden show
-
-# Show a specific target's config
-warden show work
-
-# Use explicit config file
-warden -c /path/to/config.jsonc list
+warden switch <target>       # apply git identity
+warden list                  # list all targets
+warden show                  # show current git identity
+warden show <target>         # show a specific target
 ```
 
 Target names are case-insensitive.
@@ -81,59 +112,116 @@ Target names are case-insensitive.
 ### Backup
 
 ```bash
-# Backup git identities (warden.jsonc + signing keys)
-warden backup git
-warden backup git -o ~/backups/git-keys.tar.gz
-
-# Backup SSH config (~/.ssh/config + identity keys)
-warden backup ssh
-warden backup ssh -o ~/backups/ssh-keys.tar.gz
-
-# Include hosts whose keys are missing from disk
-warden backup ssh --include-missing
+warden backup git            # backup warden.jsonc + signing keys
+warden backup ssh            # backup ~/.ssh/config + identity keys
+warden backup all            # backup everything in one archive
 ```
 
-Archives contain the config file (with paths rewritten to `~/.warden/keys/`) and all key files renamed with 6-digit hashes to avoid collisions.
+| Flag | Description |
+|---|---|
+| `-o FILE` | Custom output path (default: `warden-{type}-backup-{date}.tar.gz`) |
+| `--include-missing` | Include SSH hosts whose key files are missing from disk |
+| `--dry-run` | Show what would happen without creating the archive |
+
+Archives contain a `.warden-marker` for type validation, the config (paths rewritten to `~/.warden/keys/`), and all key files renamed with 6-digit hashes to avoid collisions.
 
 ### Restore
 
 ```bash
-# Restore git identities to ~/.warden/
-warden restore git ~/backups/git-keys.tar.gz
-
-# Restore SSH config (merges into ~/.ssh/config) + keys to ~/.warden/keys/
-warden restore ssh ~/backups/ssh-keys.tar.gz
+warden restore git <archive>   # restore to ~/.warden/
+warden restore ssh <archive>   # merge into ~/.ssh/config
+warden restore all <archive>   # restore both
 ```
 
-**Git restore** places config at `~/.warden/warden.jsonc` and keys at `~/.warden/keys/`.
+| Type | Config | Keys | SSH Merge |
+|---|---|---|---|
+| `git` | `~/.warden/warden.jsonc` | `~/.warden/keys/` | — |
+| `ssh` | `~/.ssh/config` | `~/.warden/keys/` | Update existing, append new |
+| `all` | Both | `~/.warden/keys/` | Update existing, append new |
 
-**SSH restore** merges the backed-up SSH config into your existing `~/.ssh/config` (updates existing hosts in-place, appends new ones). A backup of your current config is saved to `~/.ssh/config.bak`. Keys go to `~/.warden/keys/`.
+SSH restore saves `~/.ssh/config.bak` before merging. Keys get `chmod 600` (private) / `644` (public).
 
-## Shell Completions
+### Global Flags
 
-Completions for bash and zsh are installed automatically by `make install`. If you need to set them up manually:
+| Flag | Description |
+|---|---|
+| `-c PATH` | Override config file path |
+| `--dry-run` | Preview changes without writing to disk |
 
-**Zsh** — add to `~/.zshrc`:
+---
+
+## Project Structure
+
+```
+warden/
+  __main__.py       # argparse entry point
+  cli.py            # switch, list, show commands
+  config.py         # json5 config parsing + resolution
+  display.py        # rich-powered terminal output
+  backup.py         # backup/restore + archive marker logic
+  ssh_config.py     # SSH config parser, serializer, merge engine
+bin/warden          # bash wrapper (symlink-friendly)
+completions/        # bash + zsh tab-completion
+tests/              # pytest suite (no sensitive data)
+scripts/            # install, uninstall, formatter setup
+```
+
+---
+
+## Development
+
+| Command | Description |
+|---|---|
+| `make install` | Install deps, symlink binary, set up completions |
+| `make uninstall` | Remove symlink and caches |
+| `make test` | Run pytest suite |
+| `make format` | Run ruff + beautysh |
+| `make build` | Verify the CLI runs |
+| `make clean` | Remove `.venv`, caches, build artifacts |
+
+### Shell Completions
+
+Installed automatically by `make install`. For manual setup:
+
+<details>
+<summary>Zsh</summary>
+
+Add to `~/.zshrc`:
 ```bash
 fpath=(~/.zsh/completions $fpath)
 autoload -Uz compinit && compinit
 ```
+</details>
 
-**Bash** — completions are installed to `~/.local/share/bash-completion/completions/warden`.
+<details>
+<summary>Bash</summary>
 
-## Development
+Completions are installed to `~/.local/share/bash-completion/completions/warden`.
+</details>
 
-```bash
-make help          # Show all targets
-make format        # Run ruff + beautysh
-make build         # Verify the project runs
-make clean         # Remove caches and .venv
-```
+---
 
-### Requirements
+## Troubleshooting
 
-- Python 3.13+
-- [uv](https://github.com/astral-sh/uv)
+<details>
+<summary>warden: command not found</summary>
+
+Run `make install` to symlink the binary to `/usr/local/bin/warden`. If `/usr/local/bin` is not on your `PATH`, add it or create a symlink manually.
+</details>
+
+<details>
+<summary>Config not found</summary>
+
+Warden searches `~/.ssh/warden.jsonc`, `~/warden.jsonc`, then `./warden.jsonc`. Use `-c <path>` to point to a specific file, or run `warden list` to confirm the config is found.
+</details>
+
+<details>
+<summary>Archive type mismatch on restore</summary>
+
+Each archive contains a `.warden-marker` file identifying its type (`git`, `ssh`, or `all`). Use `warden restore all` for combined archives, or the specific type for single-purpose ones.
+</details>
+
+---
 
 ## License
 

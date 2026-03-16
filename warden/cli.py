@@ -2,6 +2,7 @@
 
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from warden import display
@@ -53,8 +54,10 @@ def cmd_switch(config: dict, target_name: str, *, dry_run: bool = False) -> None
         sys.exit(1)
 
     name, target = result
-    label = "dry run — " if dry_run else ""
-    display.header(f'{label}Switching to "{name}"')
+    label = "Dry Run — " if dry_run else ""
+    display.banner(f"{label}Switch to {name}")
+
+    start = time.monotonic()
 
     # user.name
     if "name" in target:
@@ -95,16 +98,17 @@ def cmd_switch(config: dict, target_name: str, *, dry_run: bool = False) -> None
     if not dry_run:
         display.success("commit.gpgsign = true")
 
+    elapsed = time.monotonic() - start
     print()
     if dry_run:
         display.info(f"Would switch to {display.bold(name)} (no changes made)")
     else:
-        display.success(f"Switched to {display.bold(name)}")
+        display.success_timed(f"Switched to {display.bold(name)}", elapsed)
 
 
 def cmd_list(config: dict) -> None:
     """List all available targets."""
-    display.header("Available targets")
+    display.banner("Available Targets")
     for name, target in config.items():
         email = target.get("email", "")
         uname = target.get("name", "")
@@ -117,8 +121,7 @@ def cmd_list(config: dict) -> None:
 def cmd_show(config: dict, target_name: str | None = None) -> None:
     """Show current git config or a specific target's config."""
     if target_name is None:
-        # Show current git identity
-        display.header("Current git identity")
+        display.banner("Current Git Identity")
         fields = {
             "user.name": _git_config_get("user.name"),
             "user.email": _git_config_get("user.email"),
@@ -141,7 +144,7 @@ def cmd_show(config: dict, target_name: str | None = None) -> None:
         sys.exit(1)
 
     name, target = result
-    display.header(f"Target: {name}")
+    display.banner(f"Target: {name}")
     for key, val in target.items():
         expanded = str(Path(val).expanduser()) if key == "signing_key" else val
         display.kv(key, expanded)

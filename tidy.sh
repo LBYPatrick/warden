@@ -2,11 +2,68 @@
 set -euo pipefail
 
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m'
+BOLD='\033[1m'
+DIM='\033[2m'
+
+if [ -t 1 ]; then IS_TTY=true; else IS_TTY=false; fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+
+STATUS_DIR=$(mktemp -d)
+trap "rm -rf $STATUS_DIR" EXIT
+
+format_elapsed() {
+    local seconds=$1
+    if [ "$seconds" -lt 60 ]; then
+        echo "${seconds}s"
+    else
+        local mins=$((seconds / 60))
+        local secs=$((seconds % 60))
+        echo "${mins}m ${secs}s"
+    fi
+}
+
+run_with_progress() {
+    local description="$1"
+    local log_file="$2"
+    shift 2
+    local cmd=("$@")
+    local start_time=$(date +%s)
+
+    if $IS_TTY; then
+        printf "  ${BLUE}◐${NC} %s..." "$description"
+        if "${cmd[@]}" > "$log_file" 2>&1; then
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            printf "\r\033[K  ${GREEN}✓${NC} %s ${DIM}($(format_elapsed $elapsed))${NC}\n" "$description"
+            return 0
+        else
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            printf "\r\033[K  ${RED}✗${NC} %s FAILED ${DIM}($(format_elapsed $elapsed))${NC}\n" "$description"
+            cat "$log_file"
+            return 1
+        fi
+    else
+        echo -e "  ${BLUE}▶${NC} $description..."
+        if "${cmd[@]}" > "$log_file" 2>&1; then
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            echo -e "  ${GREEN}✓${NC} $description ${DIM}($(format_elapsed $elapsed))${NC}"
+            return 0
+        else
+            local end_time=$(date +%s)
+            local elapsed=$((end_time - start_time))
+            echo -e "  ${RED}✗${NC} $description FAILED ${DIM}($(format_elapsed $elapsed))${NC}"
+            cat "$log_file"
+            return 1
+        fi
+    fi
+}
 
 # Lazy-check formatter installation
 if [[ "${1:-}" != "--skip-check" ]]; then
@@ -16,20 +73,24 @@ if [[ "${1:-}" != "--skip-check" ]]; then
     fi
 fi
 
-echo -e "${BLUE}▶${NC} Formatting..."
+echo ""
+echo -e "${BOLD}===========================================${NC}"
+echo -e "${BOLD}            Code Formatting${NC}"
+echo -e "${BOLD}===========================================${NC}"
+echo ""
 
-# Ruff lint (import sorting + unused imports)
-uv run ruff check --select I,F401 --fix .
-echo -e "  ${GREEN}✓${NC} ruff check"
+run_with_progress "ruff check" "$STATUS_DIR/ruff-check.log" \
+    uv run ruff check --select I,F401 --fix .
 
-# Ruff format
-uv run ruff format .
-echo -e "  ${GREEN}✓${NC} ruff format"
+run_with_progress "ruff format" "$STATUS_DIR/ruff-format.log" \
+    uv run ruff format .
 
-# Shell scripts
 if ls scripts/*.sh &>/dev/null; then
-    uv run -m beautysh scripts/*.sh tidy.sh
-    echo -e "  ${GREEN}✓${NC} beautysh"
+    run_with_progress "beautysh" "$STATUS_DIR/beautysh.log" \
+        uv run -m beautysh scripts/*.sh tidy.sh
 fi
 
-echo -e "\n  ${GREEN}✓${NC} All tidy"
+echo ""
+echo -e "${BOLD}===========================================${NC}"
+echo ""
+echo -e "${GREEN}${BOLD}All tidy!${NC}"
