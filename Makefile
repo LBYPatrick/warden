@@ -1,9 +1,21 @@
 .PHONY: help install uninstall clean build test format tidy
 SHELL := /bin/bash
-VERSION := $(shell cat VERSION 2>/dev/null | tr -d '\n' || echo "0.1.0")
+VERSION := $(shell cat VERSION 2>/dev/null | tr -d '\n' || echo "1.0.0")
+
+# Color support — respect WARDEN_NO_COLOR and NO_COLOR
+ifdef WARDEN_NO_COLOR
+  FMT = printf "  %-15s %s\n", $$1, $$2
+  OK  = echo "  $$1"
+else ifdef NO_COLOR
+  FMT = printf "  %-15s %s\n", $$1, $$2
+  OK  = echo "  $$1"
+else
+  FMT = printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2
+  OK  = echo "  \033[0;32m✓\033[0m $$1"
+endif
 
 help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {$(FMT)}'
 
 install: ## Install warden and symlink to /usr/local/bin
 	@bash scripts/install.sh

@@ -1,16 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-BOLD='\033[1m'
-DIM='\033[2m'
+# Color support — disabled by WARDEN_NO_COLOR or NO_COLOR
+_no_color=false
+case "${WARDEN_NO_COLOR:-${NO_COLOR:-}}" in
+    1 | true | yes) _no_color=true ;;
+esac
+if ! [ -t 1 ]; then _no_color=true; fi
 
-if [ -t 1 ]; then IS_TTY=true; else IS_TTY=false; fi
+if $_no_color; then
+    GREEN='' RED='' YELLOW='' BLUE='' CYAN='' NC='' BOLD='' DIM=''
+else
+    GREEN=$'\033[0;32m' RED=$'\033[0;31m' YELLOW=$'\033[0;33m'
+    BLUE=$'\033[0;34m' CYAN=$'\033[0;36m' NC=$'\033[0m'
+    BOLD=$'\033[1m' DIM=$'\033[2m'
+fi
+
+IS_TTY=false
+[ -t 1 ] && ! $_no_color && IS_TTY=true
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -L "$SOURCE" ]; do
@@ -59,16 +66,16 @@ run_with_progress() {
             return 1
         fi
     else
-        echo -e "  ${BLUE}▶${NC} $description..."
+        echo "  ${BLUE}▶${NC} $description..."
         if "${cmd[@]}" > "$log_file" 2>&1; then
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            echo -e "  ${GREEN}✓${NC} $description ${DIM}($(format_elapsed $elapsed))${NC}"
+            echo "  ${GREEN}✓${NC} $description ${DIM}($(format_elapsed $elapsed))${NC}"
             return 0
         else
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            echo -e "  ${RED}✗${NC} $description FAILED ${DIM}($(format_elapsed $elapsed))${NC}"
+            echo "  ${RED}✗${NC} $description FAILED ${DIM}($(format_elapsed $elapsed))${NC}"
             cat "$log_file"
             return 1
         fi
@@ -76,9 +83,9 @@ run_with_progress() {
 }
 
 echo ""
-echo -e "${BOLD}===========================================${NC}"
-echo -e "${BOLD}         Warden Installation${NC}"
-echo -e "${BOLD}===========================================${NC}"
+echo "${BOLD}===========================================${NC}"
+echo "${BOLD}         Warden Installation${NC}"
+echo "${BOLD}===========================================${NC}"
 echo ""
 
 # China mirror support
@@ -87,12 +94,12 @@ case "${WARDEN_USE_CN:-}" in
     1 | true | yes)
         USE_CN=true
         export UV_INDEX_URL="${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
-        echo -e "  ${CYAN}▶${NC} China mirror mode enabled"
+        echo "  ${CYAN}▶${NC} China mirror mode enabled"
         ;;
 esac
 
 # Step 1: Dependencies
-echo -e "${BOLD}[1/4] Dependencies${NC}"
+echo "${BOLD}[1/4] Dependencies${NC}"
 
 if ! command -v uv &>/dev/null; then
     if $USE_CN; then
@@ -103,7 +110,7 @@ if ! command -v uv &>/dev/null; then
             bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
     fi
 else
-    echo -e "  ${GREEN}✓${NC} uv already installed"
+    echo "  ${GREEN}✓${NC} uv already installed"
 fi
 
 cd "$PROJECT_ROOT"
@@ -112,22 +119,22 @@ run_with_progress "Syncing Python dependencies" "$STATUS_DIR/sync.log" \
 echo ""
 
 # Step 2: Binary
-echo -e "${BOLD}[2/4] Binary${NC}"
+echo "${BOLD}[2/4] Binary${NC}"
 
 chmod +x "$PROJECT_ROOT/bin/warden"
-echo -e "  ${GREEN}✓${NC} bin/warden marked executable"
+echo "  ${GREEN}✓${NC} bin/warden marked executable"
 
 if [ -w /usr/local/bin ] || [ "$(id -u)" -eq 0 ]; then
     ln -sf "$PROJECT_ROOT/bin/warden" /usr/local/bin/warden
-    echo -e "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden"
+    echo "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden"
 else
     sudo ln -sf "$PROJECT_ROOT/bin/warden" /usr/local/bin/warden
-    echo -e "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden (via sudo)"
+    echo "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden (via sudo)"
 fi
 echo ""
 
 # Step 3: Shell completions
-echo -e "${BOLD}[3/4] Shell completions${NC}"
+echo "${BOLD}[3/4] Shell completions${NC}"
 
 COMP_DIR="$PROJECT_ROOT/completions"
 SHELL_NAME="$(basename "$SHELL")"
@@ -136,39 +143,39 @@ if [[ "$SHELL_NAME" == "zsh" ]]; then
     ZSH_COMP_DIR="${HOME}/.zsh/completions"
     mkdir -p "$ZSH_COMP_DIR"
     ln -sf "$COMP_DIR/warden.zsh" "$ZSH_COMP_DIR/_warden"
-    echo -e "  ${GREEN}✓${NC} Zsh completions installed to $ZSH_COMP_DIR/_warden"
+    echo "  ${GREEN}✓${NC} Zsh completions installed to $ZSH_COMP_DIR/_warden"
     if ! grep -q 'fpath.*\.zsh/completions' "${HOME}/.zshrc" 2>/dev/null; then
-        echo -e "  ${YELLOW}⚠${NC} Add this to your ~/.zshrc if not already present:"
-        echo -e "    ${CYAN}fpath=(~/.zsh/completions \$fpath)${NC}"
-        echo -e "    ${CYAN}autoload -Uz compinit && compinit${NC}"
+        echo "  ${YELLOW}⚠${NC} Add this to your ~/.zshrc if not already present:"
+        echo "    ${CYAN}fpath=(~/.zsh/completions \$fpath)${NC}"
+        echo "    ${CYAN}autoload -Uz compinit && compinit${NC}"
     fi
 elif [[ "$SHELL_NAME" == "bash" ]]; then
     BASH_COMP_DIR="${HOME}/.local/share/bash-completion/completions"
     mkdir -p "$BASH_COMP_DIR"
     ln -sf "$COMP_DIR/warden.bash" "$BASH_COMP_DIR/warden"
-    echo -e "  ${GREEN}✓${NC} Bash completions installed to $BASH_COMP_DIR/warden"
+    echo "  ${GREEN}✓${NC} Bash completions installed to $BASH_COMP_DIR/warden"
 else
-    echo -e "  ${YELLOW}⊘${NC} Unknown shell: $SHELL_NAME (skipping completions)"
+    echo "  ${YELLOW}⊘${NC} Unknown shell: $SHELL_NAME (skipping completions)"
 fi
 echo ""
 
 # Step 4: Verify
-echo -e "${BOLD}[4/4] Verification${NC}"
+echo "${BOLD}[4/4] Verification${NC}"
 
 run_with_progress "Running smoke test" "$STATUS_DIR/smoke.log" \
     uv run python -m warden --help
 echo ""
 
 # Summary
-echo -e "${BOLD}===========================================${NC}"
-echo -e "${BOLD}       Installation Summary${NC}"
-echo -e "${BOLD}===========================================${NC}"
+echo "${BOLD}===========================================${NC}"
+echo "${BOLD}       Installation Summary${NC}"
+echo "${BOLD}===========================================${NC}"
 echo ""
-echo -e "  ${GREEN}✓${NC} Dependencies"
-echo -e "  ${GREEN}✓${NC} Binary"
-echo -e "  ${GREEN}✓${NC} Completions"
-echo -e "  ${GREEN}✓${NC} Verification"
+echo "  ${GREEN}✓${NC} Dependencies"
+echo "  ${GREEN}✓${NC} Binary"
+echo "  ${GREEN}✓${NC} Completions"
+echo "  ${GREEN}✓${NC} Verification"
 echo ""
-echo -e "${BOLD}===========================================${NC}"
+echo "${BOLD}===========================================${NC}"
 echo ""
-echo -e "${GREEN}${BOLD}Installation complete!${NC}"
+echo "${GREEN}${BOLD}Installation complete!${NC}"

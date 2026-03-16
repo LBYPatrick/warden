@@ -1,14 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-BOLD='\033[1m'
-DIM='\033[2m'
+# Color support — disabled by WARDEN_NO_COLOR or NO_COLOR
+_no_color=false
+case "${WARDEN_NO_COLOR:-${NO_COLOR:-}}" in
+    1 | true | yes) _no_color=true ;;
+esac
+if ! [ -t 1 ]; then _no_color=true; fi
 
-if [ -t 1 ]; then IS_TTY=true; else IS_TTY=false; fi
+if $_no_color; then
+    GREEN='' RED='' BLUE='' NC='' BOLD='' DIM=''
+else
+    GREEN=$'\033[0;32m' RED=$'\033[0;31m'
+    BLUE=$'\033[0;34m' NC=$'\033[0m'
+    BOLD=$'\033[1m' DIM=$'\033[2m'
+fi
+
+IS_TTY=false
+[ -t 1 ] && ! $_no_color && IS_TTY=true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -49,16 +58,16 @@ run_with_progress() {
             return 1
         fi
     else
-        echo -e "  ${BLUE}▶${NC} $description..."
+        echo "  ${BLUE}▶${NC} $description..."
         if "${cmd[@]}" > "$log_file" 2>&1; then
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            echo -e "  ${GREEN}✓${NC} $description ${DIM}($(format_elapsed $elapsed))${NC}"
+            echo "  ${GREEN}✓${NC} $description ${DIM}($(format_elapsed $elapsed))${NC}"
             return 0
         else
             local end_time=$(date +%s)
             local elapsed=$((end_time - start_time))
-            echo -e "  ${RED}✗${NC} $description FAILED ${DIM}($(format_elapsed $elapsed))${NC}"
+            echo "  ${RED}✗${NC} $description FAILED ${DIM}($(format_elapsed $elapsed))${NC}"
             cat "$log_file"
             return 1
         fi
@@ -68,15 +77,15 @@ run_with_progress() {
 # Lazy-check formatter installation
 if [[ "${1:-}" != "--skip-check" ]]; then
     if ! uv run ruff --version &>/dev/null; then
-        echo -e "  ${BLUE}◐${NC} Installing formatters..."
+        echo "  ${BLUE}◐${NC} Installing formatters..."
         bash scripts/install-formatter.sh
     fi
 fi
 
 echo ""
-echo -e "${BOLD}===========================================${NC}"
-echo -e "${BOLD}            Code Formatting${NC}"
-echo -e "${BOLD}===========================================${NC}"
+echo "${BOLD}===========================================${NC}"
+echo "${BOLD}            Code Formatting${NC}"
+echo "${BOLD}===========================================${NC}"
 echo ""
 
 run_with_progress "ruff check" "$STATUS_DIR/ruff-check.log" \
@@ -91,6 +100,6 @@ if ls scripts/*.sh &>/dev/null; then
 fi
 
 echo ""
-echo -e "${BOLD}===========================================${NC}"
+echo "${BOLD}===========================================${NC}"
 echo ""
-echo -e "${GREEN}${BOLD}All tidy!${NC}"
+echo "${GREEN}${BOLD}All tidy!${NC}"

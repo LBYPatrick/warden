@@ -345,6 +345,57 @@ def cmd_apply(
         )
 
 
+def cmd_install_list() -> None:
+    """Show available package managers with install status for the current OS."""
+    import shutil
+
+    from warden.platform_info import detect_platform
+
+    platform = detect_platform()
+
+    # (prefix, display_name, binary, platforms)
+    _ALL_MANAGERS = [
+        ("brew", "Homebrew formulae", "brew", ["macos", "linux"]),
+        ("cask", "Homebrew casks", "brew", ["macos", "linux"]),
+        ("mas", "Mac App Store", "mas", ["macos"]),
+        ("apt", "APT", "apt-get", ["linux"]),
+        ("dnf", "DNF", "dnf", ["linux"]),
+        ("pacman", "Pacman", "pacman", ["linux"]),
+        ("apk", "APK", "apk", ["linux"]),
+        ("snap", "Snap", "snap", ["linux"]),
+        ("flatpak", "Flatpak", "flatpak", ["linux"]),
+        ("cargo", "Cargo (Rust)", "cargo", ["macos", "linux"]),
+        ("npm", "npm (global)", "npm", ["macos", "linux"]),
+        ("pipx", "pipx (Python)", "pipx", ["macos", "linux"]),
+        ("tool", "Developer tools", None, ["macos", "linux"]),
+    ]
+
+    display.banner("Available Package Managers")
+    display.info(f"Platform: {display.bold(platform.value)}")
+    print()
+
+    for prefix, name, binary, platforms in _ALL_MANAGERS:
+        if platform.value not in platforms:
+            continue
+
+        if binary is None:
+            # tool — always available
+            status = display.green("available")
+        elif shutil.which(binary):
+            status = display.green("installed")
+        else:
+            status = display.dim("not found")
+
+        display.kv(display.bold(prefix), f"{name} [{status}]")
+
+    print()
+    display.info(
+        "Usage: warden install " + display.dim("MANAGER:PKG [MANAGER:PKG ...]")
+    )
+    display.info("Example: warden install brew:ripgrep cask:firefox cargo:bat")
+    print()
+
+
 def cmd_install(
     specs: list[str],
     *,

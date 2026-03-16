@@ -1,5 +1,6 @@
 """Sheriff-style terminal output for Warden, powered by rich."""
 
+import os
 import time
 from contextlib import contextmanager
 
@@ -8,8 +9,19 @@ from rich.rule import Rule
 
 _BANNER_WIDTH = 43
 
-_console = Console(highlight=False)
-_err_console = Console(stderr=True, highlight=False)
+
+def _detect_no_color() -> bool:
+    """Check if color should be disabled via WARDEN_NO_COLOR or NO_COLOR."""
+    for var in ("WARDEN_NO_COLOR", "NO_COLOR"):
+        val = os.environ.get(var, "").strip().lower()
+        if val in ("1", "true", "yes"):
+            return True
+    return False
+
+
+_no_color = _detect_no_color()
+_console = Console(highlight=False, no_color=_no_color)
+_err_console = Console(stderr=True, highlight=False, no_color=_no_color)
 
 
 # ---------------------------------------------------------------------------
