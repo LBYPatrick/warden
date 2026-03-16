@@ -2,15 +2,12 @@
 
 Installs brew formulae/casks, apt packages, and developer tools.
 Skips already-installed items unless force=True.
-Supports China mirrors via use_cn flag.
 """
 
-import os
 import shutil
 import subprocess
 
 from warden import display
-from warden.cn import CN_ENV, HOMEBREW_CN_ENV, apply_cn_rewrites
 from warden.platform_info import Platform
 from warden.scanner import (
     _TOOL_DEFS,
@@ -21,23 +18,14 @@ from warden.scanner import (
 )
 
 
-def _run(
-    cmd: list[str],
-    *,
-    timeout: int = 300,
-    extra_env: dict[str, str] | None = None,
-) -> tuple[bool, str]:
+def _run(cmd: list[str], *, timeout: int = 300) -> tuple[bool, str]:
     """Run a command and return (success, combined output)."""
-    env = None
-    if extra_env:
-        env = {**os.environ, **extra_env}
     try:
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=env,
         )
         output = (result.stdout + "\n" + result.stderr).strip()
         return result.returncode == 0, output
@@ -45,16 +33,8 @@ def _run(
         return False, str(e)
 
 
-def _run_shell(
-    cmd: str,
-    *,
-    timeout: int = 300,
-    extra_env: dict[str, str] | None = None,
-) -> tuple[bool, str]:
+def _run_shell(cmd: str, *, timeout: int = 300) -> tuple[bool, str]:
     """Run a shell command and return (success, combined output)."""
-    env = None
-    if extra_env:
-        env = {**os.environ, **extra_env}
     try:
         result = subprocess.run(
             cmd,
@@ -62,7 +42,6 @@ def _run_shell(
             capture_output=True,
             text=True,
             timeout=timeout,
-            env=env,
         )
         output = (result.stdout + "\n" + result.stderr).strip()
         return result.returncode == 0, output
@@ -141,11 +120,7 @@ _TOOL_INSTALL_SCRIPTS: dict[str, list[str]] = {
 
 
 def install_brew_formulae(
-    wanted: list[str],
-    *,
-    force: bool = False,
-    dry_run: bool = False,
-    use_cn: bool = False,
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
 ) -> tuple[int, int, list[str]]:
     """Install Homebrew formulae. Returns (installed, skipped, failed)."""
     if not wanted:
@@ -167,13 +142,11 @@ def install_brew_formulae(
             display.info(f"Would install formula: {p}")
         return 0, skipped, []
 
-    brew_env = HOMEBREW_CN_ENV if use_cn else None
-
     installed = 0
     failed: list[str] = []
     for pkg in to_install:
         with display.spinner(f"brew install {pkg}") as sp:
-            ok, output = _run(["brew", "install", pkg], timeout=600, extra_env=brew_env)
+            ok, output = _run(["brew", "install", pkg], timeout=600)
             if ok:
                 sp.ok(f"Installed {pkg}")
                 installed += 1
@@ -186,11 +159,7 @@ def install_brew_formulae(
 
 
 def install_brew_casks(
-    wanted: list[str],
-    *,
-    force: bool = False,
-    dry_run: bool = False,
-    use_cn: bool = False,
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
 ) -> tuple[int, int, list[str]]:
     """Install Homebrew casks. Returns (installed, skipped, failed)."""
     if not wanted:
@@ -212,15 +181,11 @@ def install_brew_casks(
             display.info(f"Would install cask: {p}")
         return 0, skipped, []
 
-    brew_env = HOMEBREW_CN_ENV if use_cn else None
-
     installed = 0
     failed: list[str] = []
     for pkg in to_install:
         with display.spinner(f"brew install --cask {pkg}") as sp:
-            ok, output = _run(
-                ["brew", "install", "--cask", pkg], timeout=600, extra_env=brew_env
-            )
+            ok, output = _run(["brew", "install", "--cask", pkg], timeout=600)
             if ok:
                 sp.ok(f"Installed {pkg}")
                 installed += 1
@@ -287,7 +252,6 @@ def install_tools(
     *,
     force: bool = False,
     dry_run: bool = False,
-    use_cn: bool = False,
 ) -> tuple[int, int, list[str]]:
     """Install developer tools. Returns (installed, skipped, failed)."""
     if not wanted:
@@ -315,8 +279,6 @@ def install_tools(
             display.info(f"Would install tool: {name}")
         return 0, skipped, []
 
-    cn_env = CN_ENV if use_cn else {}
-
     installed = 0
     failed: list[str] = []
     for slug in to_install:
@@ -328,12 +290,8 @@ def install_tools(
             continue
 
         with display.spinner(f"Installing {name}") as sp:
-            # Apply CN URL rewrites if needed
-            if use_cn:
-                script = "\n".join(apply_cn_rewrites(line) for line in script_lines)
-            else:
-                script = "\n".join(script_lines)
-            ok, output = _run_shell(script, timeout=600, extra_env=cn_env or None)
+            script = "\n".join(script_lines)
+            ok, output = _run_shell(script, timeout=600)
             if ok:
                 sp.ok(f"Installed {name}")
                 installed += 1

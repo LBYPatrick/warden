@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from warden import display
-from warden.config import serialize_config
+from warden.config import get_identities, merge_configs, serialize_config
 from warden.ssh_config import (
     HostBlock,
     get_identity_files,
@@ -222,26 +222,26 @@ def _add_keys_to_tar(tar: tarfile.TarFile, keys: list[tuple[Path, str]]) -> int:
 
 
 def _collect_git_keys(
-    config_data: dict[str, Any],
+    identities: dict[str, Any],
 ) -> tuple[dict[str, Any], list[tuple[Path, str]]]:
-    """Collect keys from warden config and build modified config.
+    """Collect keys from identities and build modified identities dict.
 
-    Returns (modified_config, keys_to_add).
+    Returns (modified_identities, keys_to_add).
     """
-    modified_config: dict[str, Any] = {}
+    modified: dict[str, Any] = {}
     keys_to_add: list[tuple[Path, str]] = []
 
-    for target_name, target in config_data.items():
+    for target_name, target in identities.items():
         new_target = dict(target)
         signing_key = target.get("signing_key")
         if not signing_key:
-            modified_config[target_name] = new_target
+            modified[target_name] = new_target
             continue
 
         key_files = _collect_key_files(signing_key)
         if not key_files:
             display.warn(f"No key files found for {target_name}: {signing_key}")
-            modified_config[target_name] = new_target
+            modified[target_name] = new_target
             continue
 
         expanded = str(Path(signing_key).expanduser().resolve())
@@ -256,9 +256,9 @@ def _collect_git_keys(
 
         pub_name = hashed_key_name(Path(expanded).name, h)
         new_target["signing_key"] = f"~/.warden/keys/{pub_name}"
-        modified_config[target_name] = new_target
+        modified[target_name] = new_target
 
-    return modified_config, keys_to_add
+    return modified, keys_to_add
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +327,10 @@ def backup_git(
     *,
     dry_run: bool = False,
 ) -> None:
-    """Backup warden.jsonc and all referenced signing keys."""
+    """Backup identities and all referenced signing keys.
+
+    Only the identities section is included — packages and tools are excluded.
+    """
     label = "Dry Run — " if dry_run else ""
     display.banner(f"{label}Backup Git Identities")
 
@@ -338,19 +341,24 @@ def backup_git(
     if out_path.exists() and not dry_run:
         display.warn(f"Overwriting {out_path}")
 
+    identities = get_identities(config_data)
+
     display.step(1, 2, "Collecting keys")
-    modified_config, keys_to_add = _collect_git_keys(config_data)
+    modified_identities, keys_to_add = _collect_git_keys(identities)
     seen: set[str] = {a for _, a in keys_to_add}
 
     if dry_run:
         display.info(f"Would create archive: {out_path}")
         display.info(
-            f"Would include {len(modified_config)} targets, {len(seen)} key files"
+            f"Would include {len(modified_identities)} targets, {len(seen)} key files"
         )
+        display.info("Packages and tools excluded from git backup")
         return
 
     display.step(2, 2, "Creating archive")
-    config_bytes = serialize_config(modified_config).encode("utf-8")
+    # Only save identities in git backup (no packages/tools)
+    archive_config = {"identities": modified_identities}
+    config_bytes = serialize_config(archive_config).encode("utf-8")
 
     with tarfile.open(str(out_path), "w:gz") as tar:
         _write_marker(tar, "git")
@@ -359,11 +367,15 @@ def backup_git(
 
     elapsed = time.monotonic() - start
     display.success_timed(f"Archive created: {out_path}", elapsed)
-    display.info(f"{len(modified_config)} targets, {written} key files")
+    display.info(f"{len(modified_identities)} targets, {written} key files")
 
 
 def restore_git(archive_path: Path, *, dry_run: bool = False) -> None:
-    """Restore git identities from a warden backup archive."""
+    """Restore git identities from a warden backup archive.
+
+    Uses merge algorithm: incoming identities override existing by name,
+    new names are added. Packages and tools are preserved from existing config.
+    """
     label = "Dry Run — " if dry_run else ""
     display.banner(f"{label}Restore Git Identities")
 
@@ -372,22 +384,47 @@ def restore_git(archive_path: Path, *, dry_run: bool = False) -> None:
     with tar:
         if dry_run:
             key_count = _extract_keys(tar, dry_run=True)
-            display.info(f"Would write config to {WARDEN_DIR / 'warden.jsonc'}")
+            display.info(f"Would merge config into {WARDEN_DIR / 'warden.jsonc'}")
             display.info(f"{key_count} key files (no changes made)")
             return
 
         display.step(1, 2, "Extracting keys")
         key_count = _extract_keys(tar)
 
-        display.step(2, 2, "Writing config")
-        config_dest = WARDEN_DIR / "warden.jsonc"
+        display.step(2, 2, "Merging config")
         with tar.extractfile(tar.getmember("warden.jsonc")) as src:
             if src:
-                config_dest.write_bytes(src.read())
-        display.success(f"Config written to {config_dest}")
+                incoming_text = src.read().decode("utf-8")
+            else:
+                display.error("Failed to read warden.jsonc from archive")
+                sys.exit(1)
 
+    _merge_warden_config(incoming_text)
     elapsed = time.monotonic() - start
     display.success_timed(f"Restored {key_count} key files to {KEYS_DIR}", elapsed)
+
+
+def _merge_warden_config(incoming_text: str) -> None:
+    """Merge incoming warden.jsonc into existing one at WARDEN_DIR."""
+    import json5
+
+    incoming = json5.loads(incoming_text)
+    config_dest = WARDEN_DIR / "warden.jsonc"
+
+    WARDEN_DIR.mkdir(parents=True, exist_ok=True)
+
+    if config_dest.is_file():
+        try:
+            existing = json5.loads(config_dest.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            existing = {}
+
+        merged = merge_configs(existing, incoming)
+        config_dest.write_text(serialize_config(merged), encoding="utf-8")
+        display.success(f"Merged config into {config_dest}")
+    else:
+        config_dest.write_text(serialize_config(incoming), encoding="utf-8")
+        display.success(f"Config written to {config_dest}")
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +551,10 @@ def backup_all(
     *,
     dry_run: bool = False,
 ) -> None:
-    """Backup both git identities and SSH config into a single archive."""
+    """Backup both git identities and SSH config into a single archive.
+
+    The full warden.jsonc (identities + packages + tools) is included.
+    """
     label = "Dry Run — " if dry_run else ""
     display.banner(f"{label}Backup All (Git + SSH)")
 
@@ -525,9 +565,11 @@ def backup_all(
     if out_path.exists() and not dry_run:
         display.warn(f"Overwriting {out_path}")
 
+    identities = get_identities(config_data)
+
     # Collect git keys
     display.step(1, 3, "Collecting git keys")
-    modified_git_config, git_keys = _collect_git_keys(config_data)
+    modified_identities, git_keys = _collect_git_keys(identities)
 
     # Collect SSH keys
     display.step(2, 3, "Collecting SSH keys")
@@ -539,13 +581,25 @@ def backup_all(
     if dry_run:
         display.info(f"Would create archive: {out_path}")
         display.info(
-            f"Would include {len(modified_git_config)} git targets, "
+            f"Would include {len(modified_identities)} git targets, "
             f"{len(path_map)} SSH hosts, {len(seen)} key files"
         )
+        display.info("Full config included (identities + packages + tools)")
         return
 
     display.step(3, 3, "Creating archive")
-    git_config_bytes = serialize_config(modified_git_config).encode("utf-8")
+    # Full config: replace identities with key-rewritten version, keep packages/tools
+    full_config: dict[str, Any] = {"identities": modified_identities}
+    from warden.config import get_packages, get_tools
+
+    pkgs = get_packages(config_data)
+    tools = get_tools(config_data)
+    if pkgs:
+        full_config["packages"] = pkgs
+    if tools:
+        full_config["tools"] = tools
+
+    git_config_bytes = serialize_config(full_config).encode("utf-8")
     rewritten_blocks = rewrite_identity_files(blocks, path_map)
     ssh_config_text = serialize_ssh_config(preamble, rewritten_blocks)
 
@@ -558,13 +612,16 @@ def backup_all(
     elapsed = time.monotonic() - start
     display.success_timed(f"Archive created: {out_path}", elapsed)
     display.info(
-        f"{len(modified_git_config)} git targets, "
+        f"{len(modified_identities)} git targets, "
         f"{len(path_map)} SSH hosts, {written} key files"
     )
 
 
 def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
-    """Restore both git identities and SSH config from a single archive."""
+    """Restore both git identities and SSH config from a single archive.
+
+    Uses merge algorithm for warden.jsonc.
+    """
     label = "Dry Run — " if dry_run else ""
     display.banner(f"{label}Restore All (Git + SSH)")
 
@@ -573,7 +630,7 @@ def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
     with tar:
         if dry_run:
             key_count = _extract_keys(tar, dry_run=True)
-            display.info(f"Would write git config to {WARDEN_DIR / 'warden.jsonc'}")
+            display.info(f"Would merge config into {WARDEN_DIR / 'warden.jsonc'}")
 
             ssh_config_path = Path.home() / ".ssh" / "config"
             with tar.extractfile(tar.getmember("ssh_config")) as src:
@@ -595,12 +652,13 @@ def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
         display.step(1, 3, "Extracting keys")
         key_count = _extract_keys(tar)
 
-        display.step(2, 3, "Writing git config")
-        config_dest = WARDEN_DIR / "warden.jsonc"
+        display.step(2, 3, "Merging config")
         with tar.extractfile(tar.getmember("warden.jsonc")) as src:
             if src:
-                config_dest.write_bytes(src.read())
-        display.success(f"Git config written to {config_dest}")
+                incoming_text = src.read().decode("utf-8")
+            else:
+                display.error("Failed to read warden.jsonc from archive")
+                sys.exit(1)
 
         display.step(3, 3, "Merging SSH config")
         with tar.extractfile(tar.getmember("ssh_config")) as src:
@@ -610,6 +668,7 @@ def restore_all(archive_path: Path, *, dry_run: bool = False) -> None:
                 display.error("Failed to read ssh_config from archive")
                 sys.exit(1)
 
+    _merge_warden_config(incoming_text)
     _merge_ssh_config(restored_ssh)
     elapsed = time.monotonic() - start
     display.success_timed(f"Restored {key_count} key files to {KEYS_DIR}", elapsed)

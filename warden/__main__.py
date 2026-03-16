@@ -1,4 +1,4 @@
-"""Warden — Config-driven Git identity switcher."""
+"""Warden — Describe the system you live in."""
 
 import argparse
 import sys
@@ -12,14 +12,14 @@ from warden.backup import (
     restore_git,
     restore_ssh,
 )
-from warden.cli import cmd_list, cmd_show, cmd_switch
+from warden.cli import cmd_apply, cmd_list, cmd_scan, cmd_show, cmd_switch, cmd_update
 from warden.config import load_config, resolve_config_path
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="warden",
-        description="Config-driven Git identity switcher with backup/restore",
+        description="Describe the system you live in",
     )
     parser.add_argument(
         "-c",
@@ -59,6 +59,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_show.add_argument("target", nargs="?", help="target name (omit for current)")
 
+    # scan
+    sub.add_parser(
+        "scan",
+        help="scan system and update packages/tools in config",
+        description="Scan installed system packages and developer tools, "
+        "then update the packages and tools sections in warden.jsonc.",
+    )
+
+    # apply
+    p_apply = sub.add_parser(
+        "apply",
+        help="install packages/tools from config onto the system",
+        description="Install packages and developer tools listed in warden.jsonc. "
+        "Already-installed items are skipped unless --force is used.",
+    )
+    p_apply.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        default=False,
+        help="reinstall all packages even if already present",
+    )
+
+    # update
+    p_update = sub.add_parser(
+        "update",
+        help="self-update warden from git",
+        description="Pull latest changes from the warden repository and reinstall.",
+    )
+    p_update.add_argument(
+        "branch",
+        nargs="?",
+        default=None,
+        help="branch to pull from (default: current branch)",
+    )
+
     # backup
     p_backup = sub.add_parser(
         "backup",
@@ -70,7 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_backup_git = backup_sub.add_parser(
         "git",
         help="backup warden.jsonc and signing keys",
-        description="Backup warden.jsonc config and all referenced signing keys.",
+        description="Backup identities and signing keys. "
+        "System packages are excluded from git backups.",
     )
     p_backup_git.add_argument(
         "-o",
@@ -99,8 +136,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_backup_all = backup_sub.add_parser(
         "all",
-        help="backup both git identities and SSH config",
-        description="Backup both warden.jsonc and SSH config with all keys.",
+        help="backup everything (git + SSH + packages + tools)",
+        description="Backup identities, SSH config, system packages, and tools.",
     )
     p_backup_all.add_argument(
         "-o",
@@ -128,7 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_restore_git = restore_sub.add_parser(
         "git",
         help="restore git identities from backup archive",
-        description="Restore warden.jsonc and signing keys to ~/.warden/.",
+        description="Restore identities and signing keys to ~/.warden/. "
+        "Merges with existing config (preserving packages/tools).",
     )
     p_restore_git.add_argument("archive", help="path to backup .tar.gz archive")
 
@@ -141,8 +179,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_restore_all = restore_sub.add_parser(
         "all",
-        help="restore both git identities and SSH config from backup",
-        description="Restore both warden.jsonc and SSH config from a combined archive.",
+        help="restore everything from backup archive",
+        description="Restore identities, SSH config, packages, and tools. "
+        "Merges with existing config.",
     )
     p_restore_all.add_argument("archive", help="path to backup .tar.gz archive")
 
@@ -169,6 +208,20 @@ def main() -> None:
         case "show":
             config = load_config(args.c)
             cmd_show(config, getattr(args, "target", None))
+        case "scan":
+            config_path = resolve_config_path(args.c)
+            if config_path is None:
+                # Create a new config if none exists
+                config_path = Path.home() / ".warden" / "warden.jsonc"
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                config_path.write_text("{}\n", encoding="utf-8")
+            config = load_config(args.c or str(config_path))
+            cmd_scan(config, config_path, dry_run=dry)
+        case "apply":
+            config = load_config(args.c)
+            cmd_apply(config, force=args.force, dry_run=dry)
+        case "update":
+            cmd_update(branch=args.branch, dry_run=dry)
         case "backup":
             if not args.backup_command:
                 parser.parse_args(["backup", "--help"])

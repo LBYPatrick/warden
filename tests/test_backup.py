@@ -1,7 +1,8 @@
 """Tests for warden.backup module."""
 
-import json
 import tarfile
+
+import json5
 
 from warden.backup import (
     MARKER_FILE,
@@ -161,12 +162,7 @@ class TestMarkerFile:
 class TestBackupRestoreGitEndToEnd:
     def test_backup_and_restore(self, tmp_path, fake_keys, fake_warden_config):
         archive = tmp_path / "git-backup.tar.gz"
-        config_data = json.loads(
-            fake_warden_config.read_text().replace(
-                "// Test config\n",
-                "",  # strip comment for json.loads
-            )
-        )
+        config_data = json5.loads(fake_warden_config.read_text())
 
         # Backup
         backup_git(fake_warden_config, config_data, str(archive))
@@ -179,6 +175,13 @@ class TestBackupRestoreGitEndToEnd:
             assert "warden.jsonc" in names
             key_files = [n for n in names if n.startswith("keys/")]
             assert len(key_files) > 0
+
+            # Verify packages are NOT in the git backup
+            with tar.extractfile(tar.getmember("warden.jsonc")) as f:
+                archived_config = json5.loads(f.read().decode("utf-8"))
+            assert "packages" not in archived_config
+            assert "tools" not in archived_config
+            assert "identities" in archived_config
 
         # Restore to a new location
         restore_dir = tmp_path / "restore_home"
@@ -195,6 +198,47 @@ class TestBackupRestoreGitEndToEnd:
             assert bmod.KEYS_DIR.is_dir()
             restored_keys = list(bmod.KEYS_DIR.iterdir())
             assert len(restored_keys) > 0
+        finally:
+            bmod.WARDEN_DIR = orig_warden
+            bmod.KEYS_DIR = orig_keys
+
+    def test_restore_merges_with_existing(
+        self, tmp_path, fake_keys, fake_warden_config
+    ):
+        """Restoring git backup merges with existing config (preserving packages)."""
+        archive = tmp_path / "git-backup.tar.gz"
+        config_data = json5.loads(fake_warden_config.read_text())
+
+        backup_git(fake_warden_config, config_data, str(archive))
+
+        import warden.backup as bmod
+
+        orig_warden = bmod.WARDEN_DIR
+        orig_keys = bmod.KEYS_DIR
+        try:
+            bmod.WARDEN_DIR = tmp_path / ".warden"
+            bmod.KEYS_DIR = bmod.WARDEN_DIR / "keys"
+            bmod.WARDEN_DIR.mkdir(parents=True, exist_ok=True)
+
+            # Pre-existing config with packages
+            existing_config = {
+                "identities": {"other": {"name": "Other"}},
+                "packages": {"brew": {"formulae": ["vim"]}},
+                "tools": ["rustup"],
+            }
+            dest = bmod.WARDEN_DIR / "warden.jsonc"
+            dest.write_text(json5.dumps(existing_config), encoding="utf-8")
+
+            restore_git(archive)
+
+            merged = json5.loads(dest.read_text(encoding="utf-8"))
+            # Identities merged
+            assert "personal" in merged["identities"]
+            assert "work" in merged["identities"]
+            assert "other" in merged["identities"]
+            # Packages preserved
+            assert "vim" in merged["packages"]["brew"]["formulae"]
+            assert "rustup" in merged["tools"]
         finally:
             bmod.WARDEN_DIR = orig_warden
             bmod.KEYS_DIR = orig_keys
@@ -242,9 +286,7 @@ class TestBackupRestoreAllEndToEnd:
 
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
-        config_data = json.loads(
-            fake_warden_config.read_text().replace("// Test config\n", "")
-        )
+        config_data = json5.loads(fake_warden_config.read_text())
 
         import warden.backup as bmod
 
@@ -262,6 +304,13 @@ class TestBackupRestoreAllEndToEnd:
                 assert MARKER_FILE in names
                 assert "warden.jsonc" in names
                 assert "ssh_config" in names
+
+                # Full config includes packages and tools
+                with tar.extractfile(tar.getmember("warden.jsonc")) as f:
+                    archived_config = json5.loads(f.read().decode("utf-8"))
+                assert "identities" in archived_config
+                assert "packages" in archived_config
+                assert "tools" in archived_config
 
             # Restore
             (tmp_path / ".ssh" / "config").unlink()

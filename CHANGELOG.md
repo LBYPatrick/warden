@@ -3,11 +3,28 @@
 ## [Unreleased]
 
 ### Added
+- Unified `warden.jsonc` config format with `identities`, `packages`, and `tools` sections
+- `warden scan` command to snapshot installed brew formulae/casks, apt packages, and developer tools into config
+- `warden apply` command to install missing packages/tools from config (skips already-installed unless `--force`)
+- `warden update` command for self-updating via git pull and reinstall
+- System package scanning: Homebrew formulae/casks, apt packages, 10 developer tools (rustup, node, pnpm, conda, flutter, gcloud, aws, wrangler, xcode, android-tools)
+- Config merge algorithm for restore: identities override by name, package/tool lists union-merged and deduplicated
+- Legacy flat config format auto-detection and backward compatibility
+- `warden/scanner.py` — synchronous system package and tool scanning
+- `warden/installer.py` — package/tool installation with skip-if-present logic
+- `warden/platform_info.py` — OS and architecture detection (macOS/Linux, amd64/arm64)
 - `warden backup all` / `warden restore all` to backup and restore both git identities and SSH config in a single archive
 - `.warden-marker` JSON marker file in every archive for type identification with double safety validation
 - `--dry-run` global flag for all mutating commands (switch, backup, restore)
-- Pytest test suite with 61 tests covering config, SSH config, backup/restore, and display modules
+- Pytest test suite with 90 tests covering config, SSH config, backup/restore, display, and scanner modules
 - GitHub Actions CI workflow running lint, format check, and tests on Ubuntu and macOS
+
+### Changed
+- Config format: identities now live under `"identities"` key (legacy flat format still supported)
+- `backup git` and `backup ssh` now exclude packages/tools sections from archives
+- `backup all` includes the full config (identities + packages + tools)
+- Restore now merges warden.jsonc with existing config instead of overwriting
+- Shell completions updated for new commands (scan, apply, update)
 
 ## [0.1.0] - 2026-03-15
 

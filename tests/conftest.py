@@ -28,12 +28,44 @@ def fake_keys(tmp_path):
 
 @pytest.fixture()
 def fake_warden_config(tmp_path, fake_keys):
-    """Create a fake warden.jsonc config file."""
+    """Create a fake warden.jsonc config file in the new format."""
     config_path = tmp_path / ".ssh" / "warden.jsonc"
     ssh_dir = fake_keys
     config_path.write_text(
         f"{{\n"
         f"  // Test config\n"
+        f'  "identities": {{\n'
+        f'    "personal": {{\n'
+        f'      "name": "Test User",\n'
+        f'      "email": "test@example.com",\n'
+        f'      "signing_key": "{ssh_dir / "id_ed25519.pub"}"\n'
+        f"    }},\n"
+        f'    "work": {{\n'
+        f'      "name": "Work User",\n'
+        f'      "email": "work@example.com",\n'
+        f'      "signing_key": "{ssh_dir / "id_ed25519_work.pub"}"\n'
+        f"    }}\n"
+        f"  }},\n"
+        f'  "packages": {{\n'
+        f'    "brew": {{\n'
+        f'      "formulae": ["git", "ripgrep"],\n'
+        f'      "casks": ["firefox"]\n'
+        f"    }}\n"
+        f"  }},\n"
+        f'  "tools": ["rustup", "node"]\n'
+        f"}}"
+    )
+    return config_path
+
+
+@pytest.fixture()
+def fake_legacy_config(tmp_path, fake_keys):
+    """Create a fake warden.jsonc config file in the legacy format."""
+    config_path = tmp_path / ".ssh" / "warden.jsonc"
+    ssh_dir = fake_keys
+    config_path.write_text(
+        f"{{\n"
+        f"  // Legacy config\n"
         f'  "personal": {{\n'
         f'    "name": "Test User",\n'
         f'    "email": "test@example.com",\n'
