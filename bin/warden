@@ -1,0 +1,13 @@
+#!/bin/bash
+# Warden — Config-driven Git identity switcher
+# Resolve symlinks to find repo root
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+WARDEN_ROOT="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+
+cd "$WARDEN_ROOT" || exit 1
+exec uv run python -m warden "$@"

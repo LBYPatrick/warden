@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.ruff_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+.mypy_cache/
+warden.jsonc
+warden-git-backup-*.tar.gz
+warden-ssh-backup-*.tar.gz
+warden-all-backup-*.tar.gz

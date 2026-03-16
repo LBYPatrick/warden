@@ -1,0 +1,26 @@
+[project]
+name = "warden"
+version = "0.1.0"
+description = "Config-driven Git identity switcher with backup/restore"
+requires-python = ">=3.13"
+license = "LGPL-3.0-or-later"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "beautysh>=6.4.2",
+    "pytest>=8.0",
+    "ruff>=0.15.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["warden"]
