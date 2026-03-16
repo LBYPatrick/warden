@@ -18,6 +18,7 @@ _warden() {
         'show:show current or specific target config'
         'scan:scan system and update packages/tools in config'
         'apply:install packages/tools from config onto the system'
+        'install:install packages via any package manager'
         'update:self-update warden from git'
         'backup:backup git identities or SSH config'
         'restore:restore git identities or SSH config from backup'
@@ -50,6 +51,13 @@ _warden() {
                     _arguments \
                         '(-f --force)'{-f,--force}'[reinstall all packages even if already present]' \
                         '--help[show help]'
+                    ;;
+                install)
+                    _arguments \
+                        '--save[add installed packages to warden.jsonc]' \
+                        '--any[bypass OS platform check]' \
+                        '--help[show help]' \
+                        '*:package (manager\:pkg):'
                     ;;
                 backup)
                     local -a backup_commands

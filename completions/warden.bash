@@ -5,7 +5,7 @@ _warden_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="switch list show scan apply update backup restore"
+    local commands="switch list show scan apply install update backup restore"
     local backup_commands="git ssh all"
     local restore_commands="git ssh all"
 
@@ -106,6 +106,10 @@ _warden_completions() {
             ;;
         apply)
             COMPREPLY=($(compgen -W "-f --force --help" -- "${cur}"))
+            return
+            ;;
+        install)
+            COMPREPLY=($(compgen -W "--save --any --help" -- "${cur}"))
             return
             ;;
     esac

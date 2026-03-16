@@ -84,6 +84,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="reinstall all packages even if already present",
     )
 
+    # install
+    p_install = sub.add_parser(
+        "install",
+        help="install packages via any package manager",
+        description="Install packages using manager:package syntax. "
+        "Use --save to also add them to warden.jsonc.\n\n"
+        "Managers: brew, cask, mas, apt, dnf, pacman, apk, snap, "
+        "flatpak, cargo, npm, pipx, tool",
+    )
+    p_install.add_argument(
+        "packages",
+        nargs="+",
+        metavar="MANAGER:PKG",
+        help="packages to install (e.g. brew:ripgrep cask:firefox cargo:bat)",
+    )
+    p_install.add_argument(
+        "--save",
+        action="store_true",
+        default=False,
+        help="also add installed packages to warden.jsonc",
+    )
+    p_install.add_argument(
+        "--any",
+        action="store_true",
+        default=False,
+        help="bypass OS platform check (allow any manager)",
+    )
+
     # update
     p_update = sub.add_parser(
         "update",
@@ -230,6 +258,18 @@ def main() -> None:
         case "apply":
             config = load_config(args.c)
             cmd_apply(config, force=args.force, dry_run=dry, use_cn=cn)
+        case "install":
+            from warden.cli import cmd_install
+
+            config_path = resolve_config_path(args.c)
+            cmd_install(
+                args.packages,
+                config_path=config_path,
+                save=args.save,
+                allow_any=args.any,
+                dry_run=dry,
+                use_cn=cn,
+            )
         case "update":
             cmd_update(branch=args.branch, dry_run=dry, use_cn=cn)
         case "backup":

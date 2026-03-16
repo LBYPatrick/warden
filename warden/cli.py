@@ -345,6 +345,254 @@ def cmd_apply(
         )
 
 
+def cmd_install(
+    specs: list[str],
+    *,
+    config_path: Path | None = None,
+    save: bool = False,
+    allow_any: bool = False,
+    dry_run: bool = False,
+    use_cn: bool = False,
+) -> None:
+    """Install packages via manager:package syntax.
+
+    Filters managers to those supported on the current OS unless --any.
+    Auto-installs missing manager binaries when possible.
+    """
+    import shutil
+
+    from warden import installer
+    from warden.platform_info import detect_platform
+
+    display.banner("Install Packages")
+    start = time.monotonic()
+
+    platform = detect_platform()
+
+    # Parse specs into {manager: [packages]}
+    grouped: dict[str, list[str]] = {}
+    for spec in specs:
+        if ":" not in spec:
+            display.error(
+                f'Invalid spec "{spec}" — use manager:package (e.g. brew:ripgrep)'
+            )
+            sys.exit(1)
+        mgr, pkg = spec.split(":", 1)
+        mgr = mgr.lower()
+        if not pkg:
+            display.error(f'Empty package name in "{spec}"')
+            sys.exit(1)
+        grouped.setdefault(mgr, []).append(pkg)
+
+    # Manager definitions: (install_fn, config_key, sub_key, platforms, auto_install_hint)
+    # auto_install_hint: how to get the manager if missing (None = skip)
+    _INSTALL_MAP: dict[str, tuple[callable, str, str | None, list[str], str | None]] = {
+        "brew": (
+            lambda pkgs, **kw: installer.install_brew_formulae(
+                pkgs, use_cn=use_cn, **kw
+            ),
+            "brew",
+            "formulae",
+            ["macos", "linux"],
+            None,
+        ),
+        "cask": (
+            lambda pkgs, **kw: installer.install_brew_casks(pkgs, use_cn=use_cn, **kw),
+            "brew",
+            "casks",
+            ["macos", "linux"],
+            None,
+        ),
+        "mas": (
+            installer.install_mas_apps,
+            "mas",
+            "apps",
+            ["macos"],
+            "brew install mas",
+        ),
+        "apt": (installer.install_apt_packages, "apt", "packages", ["linux"], None),
+        "dnf": (installer.install_dnf_packages, "dnf", "packages", ["linux"], None),
+        "pacman": (
+            installer.install_pacman_packages,
+            "pacman",
+            "packages",
+            ["linux"],
+            None,
+        ),
+        "apk": (installer.install_apk_packages, "apk", "packages", ["linux"], None),
+        "snap": (
+            installer.install_snap_packages,
+            "snap",
+            "packages",
+            ["linux"],
+            "sudo apt install snapd",
+        ),
+        "flatpak": (
+            installer.install_flatpak_packages,
+            "flatpak",
+            "packages",
+            ["linux"],
+            "sudo apt install flatpak",
+        ),
+        "cargo": (
+            installer.install_cargo_packages,
+            "cargo",
+            "packages",
+            ["macos", "linux"],
+            None,
+        ),
+        "npm": (
+            installer.install_npm_global_packages,
+            "npm",
+            "packages",
+            ["macos", "linux"],
+            None,
+        ),
+        "pipx": (
+            installer.install_pipx_packages,
+            "pipx",
+            "packages",
+            ["macos", "linux"],
+            "brew install pipx",
+        ),
+        "tool": (
+            lambda pkgs, **kw: installer.install_tools(
+                pkgs, platform, use_cn=use_cn, **kw
+            ),
+            "tools",
+            None,
+            ["macos", "linux"],
+            None,
+        ),
+    }
+
+    # Binary name for each manager (for auto-install check)
+    _MGR_BINARY: dict[str, str] = {
+        "brew": "brew",
+        "cask": "brew",
+        "mas": "mas",
+        "apt": "apt-get",
+        "dnf": "dnf",
+        "pacman": "pacman",
+        "apk": "apk",
+        "snap": "snap",
+        "flatpak": "flatpak",
+        "cargo": "cargo",
+        "npm": "npm",
+        "pipx": "pipx",
+        "tool": "",  # tools don't need a single binary
+    }
+
+    total_installed = 0
+    all_failed: list[str] = []
+    saved_entries: dict[str, Any] = {}
+
+    for mgr, pkgs in grouped.items():
+        if mgr not in _INSTALL_MAP:
+            display.error(
+                f'Unknown manager "{mgr}". Available: {", ".join(sorted(_INSTALL_MAP))}'
+            )
+            sys.exit(1)
+
+        install_fn, config_key, sub_key, platforms, auto_hint = _INSTALL_MAP[mgr]
+
+        # Platform check
+        if not allow_any and platform.value not in platforms:
+            display.error(
+                f'Manager "{mgr}" is not available on {platform.value} '
+                f"(use --any to override)"
+            )
+            sys.exit(1)
+
+        # Auto-install missing manager binary
+        binary = _MGR_BINARY.get(mgr, "")
+        if binary and not shutil.which(binary):
+            if auto_hint and not dry_run:
+                display.info(f"{mgr} not found, installing via: {auto_hint}")
+                ok, output = installer._run_shell(auto_hint, timeout=300)
+                if not ok:
+                    display.error(
+                        f"Failed to install {mgr}: {output.splitlines()[-1] if output else 'unknown'}"
+                    )
+                    all_failed.extend(f"{mgr}:{p}" for p in pkgs)
+                    continue
+                display.success(f"Installed {mgr}")
+            elif auto_hint and dry_run:
+                display.info(f"Would install {mgr} via: {auto_hint}")
+
+        print()
+        display.header(f"{mgr} ({len(pkgs)})")
+        installed, _skipped, failed = install_fn(pkgs, dry_run=dry_run)
+        total_installed += installed
+        all_failed.extend(f"{mgr}:{f}" for f in failed)
+
+        # Track successfully installed for --save
+        if save and installed > 0:
+            successful = [p for p in pkgs if p not in failed]
+            if sub_key:
+                saved_entries.setdefault(config_key, {}).setdefault(sub_key, []).extend(
+                    successful
+                )
+            else:
+                saved_entries.setdefault(config_key, []).extend(successful)
+
+    # Save to config if requested
+    if save and saved_entries and not dry_run and config_path:
+        _save_to_config(config_path, saved_entries)
+
+    elapsed = time.monotonic() - start
+    print()
+    if dry_run:
+        display.info("No changes made (dry run)")
+    elif all_failed:
+        display.error_timed(
+            f"Installed {total_installed}, failed {len(all_failed)}", elapsed
+        )
+        for f in all_failed:
+            display.error(f"  {f}")
+    else:
+        display.success_timed(f"Installed {total_installed}", elapsed)
+        if save and config_path:
+            display.success(f"Saved to {config_path}")
+
+
+def _save_to_config(config_path: Path, entries: dict[str, Any]) -> None:
+    """Merge installed packages into existing warden.jsonc."""
+    import json5
+
+    if config_path.is_file():
+        try:
+            config = json5.loads(config_path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            config = {}
+    else:
+        config = {}
+
+    packages = config.get("packages", {})
+
+    for key, value in entries.items():
+        if key == "tools":
+            # Tools is a top-level list
+            existing_tools = config.get("tools", [])
+            if isinstance(value, list):
+                merged = sorted(set(existing_tools) | set(value))
+                config["tools"] = merged
+        elif isinstance(value, dict):
+            # Package manager section
+            existing_section = packages.get(key, {})
+            for sub_key, new_pkgs in value.items():
+                existing_list = existing_section.get(sub_key, [])
+                merged = sorted(set(existing_list) | set(new_pkgs))
+                existing_section[sub_key] = merged
+            packages[key] = existing_section
+
+    if packages:
+        config["packages"] = packages
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(serialize_config(config), encoding="utf-8")
+
+
 def cmd_update(
     *, branch: str | None = None, dry_run: bool = False, use_cn: bool = False
 ) -> None:
