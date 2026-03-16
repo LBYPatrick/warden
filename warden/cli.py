@@ -222,12 +222,7 @@ def cmd_apply(
 
     Skips already-installed items unless force=True.
     """
-    from warden.installer import (
-        install_apt_packages,
-        install_brew_casks,
-        install_brew_formulae,
-        install_tools,
-    )
+    from warden import installer
     from warden.platform_info import detect_platform
 
     label = "Dry Run — " if dry_run else ""
@@ -248,61 +243,89 @@ def cmd_apply(
     total_skipped = 0
     all_failed: list[str] = []
 
-    # Brew formulae
+    def _apply_section(
+        key: str,
+        header_name: str,
+        items: list[str],
+        install_fn: callable,
+        **kwargs,
+    ) -> None:
+        nonlocal total_installed, total_skipped
+        if not items:
+            return
+        print()
+        display.header(f"{header_name} ({len(items)})")
+        installed, skipped, failed = install_fn(
+            items, force=force, dry_run=dry_run, **kwargs
+        )
+        total_installed += installed
+        total_skipped += skipped
+        all_failed.extend(f"{key}:{f}" for f in failed)
+        if skipped and not dry_run:
+            display.skip(f"{skipped} already installed")
+
+    # --- Package managers (order: system managers first, then cross-platform) ---
+
+    # Brew formulae + casks
     brew = pkgs.get("brew", {})
-    formulae = brew.get("formulae", [])
-    if formulae:
-        print()
-        display.header(f"Homebrew formulae ({len(formulae)})")
-        installed, skipped, failed = install_brew_formulae(
-            formulae, force=force, dry_run=dry_run, use_cn=use_cn
-        )
-        total_installed += installed
-        total_skipped += skipped
-        all_failed.extend(f"brew:{f}" for f in failed)
-        if skipped and not dry_run:
-            display.skip(f"{skipped} already installed")
+    _apply_section(
+        "brew",
+        "Homebrew formulae",
+        brew.get("formulae", []),
+        installer.install_brew_formulae,
+        use_cn=use_cn,
+    )
+    _apply_section(
+        "cask",
+        "Homebrew casks",
+        brew.get("casks", []),
+        installer.install_brew_casks,
+        use_cn=use_cn,
+    )
 
-    # Brew casks
-    casks = brew.get("casks", [])
-    if casks:
-        print()
-        display.header(f"Homebrew casks ({len(casks)})")
-        installed, skipped, failed = install_brew_casks(
-            casks, force=force, dry_run=dry_run, use_cn=use_cn
-        )
-        total_installed += installed
-        total_skipped += skipped
-        all_failed.extend(f"cask:{f}" for f in failed)
-        if skipped and not dry_run:
-            display.skip(f"{skipped} already installed")
+    # Mac App Store
+    _apply_section(
+        "mas",
+        "Mac App Store",
+        pkgs.get("mas", {}).get("apps", []),
+        installer.install_mas_apps,
+    )
 
-    # APT packages
-    apt_pkgs = pkgs.get("apt", {}).get("packages", [])
-    if apt_pkgs:
-        print()
-        display.header(f"APT packages ({len(apt_pkgs)})")
-        installed, skipped, failed = install_apt_packages(
-            apt_pkgs, force=force, dry_run=dry_run
-        )
-        total_installed += installed
-        total_skipped += skipped
-        all_failed.extend(f"apt:{f}" for f in failed)
-        if skipped and not dry_run:
-            display.skip(f"{skipped} already installed")
+    # Linux system package managers
+    _LINUX_MANAGERS = [
+        ("apt", "APT", installer.install_apt_packages),
+        ("dnf", "DNF", installer.install_dnf_packages),
+        ("pacman", "Pacman", installer.install_pacman_packages),
+        ("apk", "APK", installer.install_apk_packages),
+        ("snap", "Snap", installer.install_snap_packages),
+        ("flatpak", "Flatpak", installer.install_flatpak_packages),
+    ]
+    for key, name, install_fn in _LINUX_MANAGERS:
+        section_pkgs = pkgs.get(key, {}).get("packages", [])
+        _apply_section(key, f"{name} packages", section_pkgs, install_fn)
+
+    # Cross-platform package managers
+    _CROSS_MANAGERS = [
+        ("cargo", "Cargo", installer.install_cargo_packages),
+        ("npm", "npm global", installer.install_npm_global_packages),
+        ("pipx", "pipx", installer.install_pipx_packages),
+    ]
+    for key, name, install_fn in _CROSS_MANAGERS:
+        section_pkgs = pkgs.get(key, {}).get("packages", [])
+        _apply_section(key, f"{name} packages", section_pkgs, install_fn)
 
     # Developer tools
     if tools_list:
         print()
         display.header(f"Developer tools ({len(tools_list)})")
-        installed, skipped, failed = install_tools(
+        inst, skip, failed = installer.install_tools(
             tools_list, platform, force=force, dry_run=dry_run, use_cn=use_cn
         )
-        total_installed += installed
-        total_skipped += skipped
+        total_installed += inst
+        total_skipped += skip
         all_failed.extend(f"tool:{f}" for f in failed)
-        if skipped and not dry_run:
-            display.skip(f"{skipped} already installed")
+        if skip and not dry_run:
+            display.skip(f"{skip} already installed")
 
     elapsed = time.monotonic() - start
     print()

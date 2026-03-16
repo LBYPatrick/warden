@@ -216,6 +216,35 @@ class TestMergeConfigs:
         assert merged["identities"]["personal"]["name"] == "Test"
         assert "git" in merged["packages"]["brew"]["formulae"]
 
+    def test_merge_generic_package_managers(self):
+        existing = {
+            "packages": {
+                "cargo": {"packages": ["ripgrep", "fd-find"]},
+                "snap": {"packages": ["firefox"]},
+            },
+        }
+        incoming = {
+            "packages": {
+                "cargo": {"packages": ["ripgrep", "bat"]},
+                "npm": {"packages": ["typescript"]},
+            },
+        }
+        merged = merge_configs(existing, incoming)
+        cargo = merged["packages"]["cargo"]["packages"]
+        assert set(cargo) == {"ripgrep", "fd-find", "bat"}
+        assert cargo == sorted(cargo)
+        # snap preserved from existing
+        assert "firefox" in merged["packages"]["snap"]["packages"]
+        # npm added from incoming
+        assert "typescript" in merged["packages"]["npm"]["packages"]
+
+    def test_merge_mas_apps(self):
+        existing = {"packages": {"mas": {"apps": ["123:App1"]}}}
+        incoming = {"packages": {"mas": {"apps": ["123:App1", "456:App2"]}}}
+        merged = merge_configs(existing, incoming)
+        apps = merged["packages"]["mas"]["apps"]
+        assert set(apps) == {"123:App1", "456:App2"}
+
     def test_merge_legacy_with_new(self):
         existing = {"personal": {"name": "Old"}}  # legacy
         incoming = {

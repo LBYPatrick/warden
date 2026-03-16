@@ -74,7 +74,7 @@ _warden_completions() {
                         [[ "${prev}" == "-o" || "${prev}" == "--output" ]] && _filedir
                         ;;
                     all)
-                        COMPREPLY=($(compgen -W "-o --output --include-missing --help" -- "${cur}"))
+                        COMPREPLY=($(compgen -W "-o --output --include-missing -s --scan --help" -- "${cur}"))
                         [[ "${prev}" == "-o" || "${prev}" == "--output" ]] && _filedir
                         ;;
                 esac

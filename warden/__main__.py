@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from warden import display
 from warden.backup import (
     backup_all,
     backup_git,
@@ -152,6 +153,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="include SSH hosts whose key files are missing from disk",
     )
+    p_backup_all.add_argument(
+        "-s",
+        "--scan",
+        action="store_true",
+        default=False,
+        help="re-scan system packages before backup (updates config)",
+    )
 
     # restore
     p_restore = sub.add_parser(
@@ -236,8 +244,24 @@ def main() -> None:
                 case "ssh":
                     backup_ssh(args.output, args.include_missing, dry_run=dry)
                 case "all":
-                    config = load_config(args.c)
                     config_path = resolve_config_path(args.c)
+                    config = load_config(args.c)
+                    if args.scan:
+                        from warden.platform_info import detect_platform
+                        from warden.scanner import scan_system
+
+                        display.info("Re-scanning system packages...")
+                        scanned = scan_system(detect_platform())
+                        from warden.config import serialize_config, update_packages
+
+                        config = update_packages(
+                            config, scanned["packages"], scanned["tools"]
+                        )
+                        if not dry:
+                            config_path.write_text(
+                                serialize_config(config), encoding="utf-8"
+                            )
+                            display.success(f"Config updated: {config_path}")
                     backup_all(
                         config_path,
                         config,

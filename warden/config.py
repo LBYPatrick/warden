@@ -158,13 +158,34 @@ def _merge_list_union(existing: list, incoming: list) -> list:
     return sorted(combined)
 
 
+def _merge_pkg_section(
+    ex_section: dict[str, Any], in_section: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge two package manager sections by union-merging all sub-lists."""
+    if not ex_section and not in_section:
+        return {}
+    all_keys = set(ex_section) | set(in_section)
+    merged: dict[str, Any] = {}
+    for key in sorted(all_keys):
+        ex_val = ex_section.get(key, [])
+        in_val = in_section.get(key, [])
+        if isinstance(ex_val, list) and isinstance(in_val, list):
+            union = _merge_list_union(ex_val, in_val)
+            if union:
+                merged[key] = union
+        elif in_val:
+            merged[key] = in_val
+        elif ex_val:
+            merged[key] = ex_val
+    return merged
+
+
 def merge_configs(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
     """Merge incoming config into existing config.
 
     Merge rules:
     - identities: incoming overrides existing by name, new names added
-    - packages.brew.formulae/casks: sorted union
-    - packages.apt.packages: sorted union
+    - packages.*: each manager's sub-lists are union-merged
     - tools: sorted union
     """
     result: dict[str, Any] = {}
@@ -177,36 +198,23 @@ def merge_configs(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[st
     if merged_ids:
         result["identities"] = merged_ids
 
-    # Merge packages
+    # Merge packages — handle every manager key generically
     ex_pkgs = get_packages(existing)
     in_pkgs = get_packages(incoming)
+    all_mgr_keys = set(ex_pkgs) | set(in_pkgs)
     merged_pkgs: dict[str, Any] = {}
 
-    # Brew
-    ex_brew = ex_pkgs.get("brew", {})
-    in_brew = in_pkgs.get("brew", {})
-    if ex_brew or in_brew:
-        merged_brew: dict[str, list[str]] = {}
-        formulae = _merge_list_union(
-            ex_brew.get("formulae", []), in_brew.get("formulae", [])
-        )
-        casks = _merge_list_union(ex_brew.get("casks", []), in_brew.get("casks", []))
-        if formulae:
-            merged_brew["formulae"] = formulae
-        if casks:
-            merged_brew["casks"] = casks
-        if merged_brew:
-            merged_pkgs["brew"] = merged_brew
-
-    # APT
-    ex_apt = ex_pkgs.get("apt", {})
-    in_apt = in_pkgs.get("apt", {})
-    if ex_apt or in_apt:
-        apt_pkgs = _merge_list_union(
-            ex_apt.get("packages", []), in_apt.get("packages", [])
-        )
-        if apt_pkgs:
-            merged_pkgs["apt"] = {"packages": apt_pkgs}
+    for mgr_key in sorted(all_mgr_keys):
+        ex_section = ex_pkgs.get(mgr_key, {})
+        in_section = in_pkgs.get(mgr_key, {})
+        if isinstance(ex_section, dict) and isinstance(in_section, dict):
+            merged_section = _merge_pkg_section(ex_section, in_section)
+            if merged_section:
+                merged_pkgs[mgr_key] = merged_section
+        elif in_section:
+            merged_pkgs[mgr_key] = in_section
+        elif ex_section:
+            merged_pkgs[mgr_key] = ex_section
 
     if merged_pkgs:
         result["packages"] = merged_pkgs

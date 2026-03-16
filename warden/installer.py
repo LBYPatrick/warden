@@ -1,6 +1,6 @@
 """Package and tool installation for Warden.
 
-Installs brew formulae/casks, apt packages, and developer tools.
+Installs packages across multiple package managers and developer tools.
 Skips already-installed items unless force=True.
 Supports China mirrors via use_cn flag.
 """
@@ -14,9 +14,18 @@ from warden.cn import CN_ENV, HOMEBREW_CN_ENV, apply_cn_rewrites
 from warden.platform_info import Platform
 from warden.scanner import (
     _TOOL_DEFS,
+    scan_apk_packages,
     scan_apt_packages,
     scan_brew_casks,
     scan_brew_formulae,
+    scan_cargo_packages,
+    scan_dnf_packages,
+    scan_flatpak_packages,
+    scan_mas_apps,
+    scan_npm_global_packages,
+    scan_pacman_packages,
+    scan_pipx_packages,
+    scan_snap_packages,
     scan_tools,
 )
 
@@ -69,6 +78,375 @@ def _run_shell(
     except subprocess.TimeoutExpired as e:
         return False, str(e)
 
+
+# ---------------------------------------------------------------------------
+# Generic installer: one-at-a-time with spinner
+# ---------------------------------------------------------------------------
+
+
+def _install_packages_generic(
+    wanted: list[str],
+    *,
+    label: str,
+    binary: str,
+    scan_fn: callable,
+    install_cmd: list[str],
+    force: bool = False,
+    dry_run: bool = False,
+    extra_env: dict[str, str] | None = None,
+    timeout: int = 600,
+) -> tuple[int, int, list[str]]:
+    """Generic package installer. Returns (installed, skipped, failed).
+
+    install_cmd should be a list where the package name is appended,
+    e.g. ["brew", "install"] -> ["brew", "install", "pkg"].
+    """
+    if not wanted:
+        return 0, 0, []
+
+    if not shutil.which(binary):
+        display.warn(f"{label}: {binary} not found, skipping")
+        return 0, len(wanted), []
+
+    installed_set = set(scan_fn()) if not force else set()
+    to_install = [p for p in wanted if p not in installed_set]
+    skipped = len(wanted) - len(to_install)
+
+    if not to_install:
+        return 0, skipped, []
+
+    if dry_run:
+        for p in to_install:
+            display.info(f"Would install {label}: {p}")
+        return 0, skipped, []
+
+    installed = 0
+    failed: list[str] = []
+    for pkg in to_install:
+        cmd_display = " ".join(install_cmd) + f" {pkg}"
+        with display.spinner(cmd_display) as sp:
+            ok, output = _run([*install_cmd, pkg], timeout=timeout, extra_env=extra_env)
+            if ok:
+                sp.ok(f"Installed {pkg}")
+                installed += 1
+            else:
+                last_line = output.splitlines()[-1] if output else "unknown error"
+                sp.fail(f"{pkg}: {last_line}")
+                failed.append(pkg)
+
+    return installed, skipped, failed
+
+
+# ---------------------------------------------------------------------------
+# Homebrew
+# ---------------------------------------------------------------------------
+
+
+def install_brew_formulae(
+    wanted: list[str],
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+    use_cn: bool = False,
+) -> tuple[int, int, list[str]]:
+    """Install Homebrew formulae."""
+    return _install_packages_generic(
+        wanted,
+        label="brew formula",
+        binary="brew",
+        scan_fn=scan_brew_formulae,
+        install_cmd=["brew", "install"],
+        force=force,
+        dry_run=dry_run,
+        extra_env=HOMEBREW_CN_ENV if use_cn else None,
+    )
+
+
+def install_brew_casks(
+    wanted: list[str],
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+    use_cn: bool = False,
+) -> tuple[int, int, list[str]]:
+    """Install Homebrew casks."""
+    return _install_packages_generic(
+        wanted,
+        label="brew cask",
+        binary="brew",
+        scan_fn=scan_brew_casks,
+        install_cmd=["brew", "install", "--cask"],
+        force=force,
+        dry_run=dry_run,
+        extra_env=HOMEBREW_CN_ENV if use_cn else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Mac App Store
+# ---------------------------------------------------------------------------
+
+
+def install_mas_apps(
+    wanted: list[str],
+    *,
+    force: bool = False,
+    dry_run: bool = False,
+) -> tuple[int, int, list[str]]:
+    """Install Mac App Store apps. Items are 'id:name' strings."""
+    if not wanted:
+        return 0, 0, []
+
+    if not shutil.which("mas"):
+        display.warn("mas not found, skipping Mac App Store apps")
+        return 0, len(wanted), []
+
+    # Build set of installed IDs
+    installed_ids = set()
+    if not force:
+        for entry in scan_mas_apps():
+            app_id = entry.split(":")[0]
+            installed_ids.add(app_id)
+
+    to_install = [a for a in wanted if a.split(":")[0] not in installed_ids]
+    skipped = len(wanted) - len(to_install)
+
+    if not to_install:
+        return 0, skipped, []
+
+    if dry_run:
+        for app in to_install:
+            display.info(f"Would install mas app: {app}")
+        return 0, skipped, []
+
+    installed = 0
+    failed: list[str] = []
+    for app in to_install:
+        app_id = app.split(":")[0]
+        name = app.split(":", 1)[1] if ":" in app else app_id
+        with display.spinner(f"mas install {name}") as sp:
+            ok, output = _run(["mas", "install", app_id], timeout=600)
+            if ok:
+                sp.ok(f"Installed {name}")
+                installed += 1
+            else:
+                last_line = output.splitlines()[-1] if output else "unknown error"
+                sp.fail(f"{name}: {last_line}")
+                failed.append(app)
+
+    return installed, skipped, failed
+
+
+# ---------------------------------------------------------------------------
+# APT (with bulk fallback)
+# ---------------------------------------------------------------------------
+
+
+def install_apt_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install apt packages with bulk-then-individual fallback."""
+    if not wanted:
+        return 0, 0, []
+
+    if not shutil.which("apt-get"):
+        display.warn("apt-get not found, skipping apt packages")
+        return 0, len(wanted), []
+
+    installed_set = set(scan_apt_packages()) if not force else set()
+    to_install = [p for p in wanted if p not in installed_set]
+    skipped = len(wanted) - len(to_install)
+
+    if not to_install:
+        return 0, skipped, []
+
+    if dry_run:
+        for p in to_install:
+            display.info(f"Would install apt package: {p}")
+        return 0, skipped, []
+
+    display.info("Updating apt package index...")
+    _run(["sudo", "apt-get", "update", "-qq"], timeout=120)
+
+    # Try bulk install first
+    ok, output = _run(["sudo", "apt-get", "install", "-y", *to_install], timeout=600)
+    if ok:
+        return len(to_install), skipped, []
+
+    # Fall back to individual installs
+    return _install_packages_generic(
+        to_install,
+        label="apt",
+        binary="apt-get",
+        scan_fn=lambda: [],  # Already filtered
+        install_cmd=["sudo", "apt-get", "install", "-y"],
+        force=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# DNF
+# ---------------------------------------------------------------------------
+
+
+def install_dnf_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install dnf packages."""
+    return _install_packages_generic(
+        wanted,
+        label="dnf",
+        binary="dnf",
+        scan_fn=scan_dnf_packages,
+        install_cmd=["sudo", "dnf", "install", "-y"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pacman
+# ---------------------------------------------------------------------------
+
+
+def install_pacman_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install pacman packages."""
+    return _install_packages_generic(
+        wanted,
+        label="pacman",
+        binary="pacman",
+        scan_fn=scan_pacman_packages,
+        install_cmd=["sudo", "pacman", "-S", "--noconfirm"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# APK
+# ---------------------------------------------------------------------------
+
+
+def install_apk_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install apk packages."""
+    return _install_packages_generic(
+        wanted,
+        label="apk",
+        binary="apk",
+        scan_fn=scan_apk_packages,
+        install_cmd=["sudo", "apk", "add"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Snap
+# ---------------------------------------------------------------------------
+
+
+def install_snap_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install snap packages."""
+    return _install_packages_generic(
+        wanted,
+        label="snap",
+        binary="snap",
+        scan_fn=scan_snap_packages,
+        install_cmd=["sudo", "snap", "install"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Flatpak
+# ---------------------------------------------------------------------------
+
+
+def install_flatpak_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install flatpak applications."""
+    return _install_packages_generic(
+        wanted,
+        label="flatpak",
+        binary="flatpak",
+        scan_fn=scan_flatpak_packages,
+        install_cmd=["flatpak", "install", "-y"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cargo
+# ---------------------------------------------------------------------------
+
+
+def install_cargo_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install cargo packages."""
+    return _install_packages_generic(
+        wanted,
+        label="cargo",
+        binary="cargo",
+        scan_fn=scan_cargo_packages,
+        install_cmd=["cargo", "install"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# npm (global)
+# ---------------------------------------------------------------------------
+
+
+def install_npm_global_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install npm global packages."""
+    return _install_packages_generic(
+        wanted,
+        label="npm global",
+        binary="npm",
+        scan_fn=scan_npm_global_packages,
+        install_cmd=["npm", "install", "-g"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# pipx
+# ---------------------------------------------------------------------------
+
+
+def install_pipx_packages(
+    wanted: list[str], *, force: bool = False, dry_run: bool = False
+) -> tuple[int, int, list[str]]:
+    """Install pipx packages."""
+    return _install_packages_generic(
+        wanted,
+        label="pipx",
+        binary="pipx",
+        scan_fn=scan_pipx_packages,
+        install_cmd=["pipx", "install"],
+        force=force,
+        dry_run=dry_run,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Developer tools
+# ---------------------------------------------------------------------------
 
 # Tool slug -> install script lines
 _TOOL_INSTALL_SCRIPTS: dict[str, list[str]] = {
@@ -140,147 +518,6 @@ _TOOL_INSTALL_SCRIPTS: dict[str, list[str]] = {
 }
 
 
-def install_brew_formulae(
-    wanted: list[str],
-    *,
-    force: bool = False,
-    dry_run: bool = False,
-    use_cn: bool = False,
-) -> tuple[int, int, list[str]]:
-    """Install Homebrew formulae. Returns (installed, skipped, failed)."""
-    if not wanted:
-        return 0, 0, []
-
-    if not shutil.which("brew"):
-        display.warn("Homebrew not found, skipping formulae")
-        return 0, len(wanted), []
-
-    installed_set = set(scan_brew_formulae()) if not force else set()
-    to_install = [p for p in wanted if p not in installed_set]
-    skipped = len(wanted) - len(to_install)
-
-    if not to_install:
-        return 0, skipped, []
-
-    if dry_run:
-        for p in to_install:
-            display.info(f"Would install formula: {p}")
-        return 0, skipped, []
-
-    brew_env = HOMEBREW_CN_ENV if use_cn else None
-
-    installed = 0
-    failed: list[str] = []
-    for pkg in to_install:
-        with display.spinner(f"brew install {pkg}") as sp:
-            ok, output = _run(["brew", "install", pkg], timeout=600, extra_env=brew_env)
-            if ok:
-                sp.ok(f"Installed {pkg}")
-                installed += 1
-            else:
-                last_line = output.splitlines()[-1] if output else "unknown error"
-                sp.fail(f"{pkg}: {last_line}")
-                failed.append(pkg)
-
-    return installed, skipped, failed
-
-
-def install_brew_casks(
-    wanted: list[str],
-    *,
-    force: bool = False,
-    dry_run: bool = False,
-    use_cn: bool = False,
-) -> tuple[int, int, list[str]]:
-    """Install Homebrew casks. Returns (installed, skipped, failed)."""
-    if not wanted:
-        return 0, 0, []
-
-    if not shutil.which("brew"):
-        display.warn("Homebrew not found, skipping casks")
-        return 0, len(wanted), []
-
-    installed_set = set(scan_brew_casks()) if not force else set()
-    to_install = [p for p in wanted if p not in installed_set]
-    skipped = len(wanted) - len(to_install)
-
-    if not to_install:
-        return 0, skipped, []
-
-    if dry_run:
-        for p in to_install:
-            display.info(f"Would install cask: {p}")
-        return 0, skipped, []
-
-    brew_env = HOMEBREW_CN_ENV if use_cn else None
-
-    installed = 0
-    failed: list[str] = []
-    for pkg in to_install:
-        with display.spinner(f"brew install --cask {pkg}") as sp:
-            ok, output = _run(
-                ["brew", "install", "--cask", pkg], timeout=600, extra_env=brew_env
-            )
-            if ok:
-                sp.ok(f"Installed {pkg}")
-                installed += 1
-            else:
-                last_line = output.splitlines()[-1] if output else "unknown error"
-                sp.fail(f"{pkg}: {last_line}")
-                failed.append(pkg)
-
-    return installed, skipped, failed
-
-
-def install_apt_packages(
-    wanted: list[str], *, force: bool = False, dry_run: bool = False
-) -> tuple[int, int, list[str]]:
-    """Install apt packages. Returns (installed, skipped, failed)."""
-    if not wanted:
-        return 0, 0, []
-
-    if not shutil.which("apt-get"):
-        display.warn("apt-get not found, skipping apt packages")
-        return 0, len(wanted), []
-
-    installed_set = set(scan_apt_packages()) if not force else set()
-    to_install = [p for p in wanted if p not in installed_set]
-    skipped = len(wanted) - len(to_install)
-
-    if not to_install:
-        return 0, skipped, []
-
-    if dry_run:
-        for p in to_install:
-            display.info(f"Would install apt package: {p}")
-        return 0, skipped, []
-
-    # Update index
-    display.info("Updating apt package index...")
-    _run(["sudo", "apt-get", "update", "-qq"], timeout=120)
-
-    # Try bulk install first
-    ok, output = _run(["sudo", "apt-get", "install", "-y", *to_install], timeout=600)
-    if ok:
-        return len(to_install), skipped, []
-
-    # Fall back to individual installs
-    installed = 0
-    failed: list[str] = []
-    for pkg in to_install:
-        with display.spinner(f"apt-get install {pkg}") as sp:
-            ok, output = _run(["sudo", "apt-get", "install", "-y", pkg], timeout=300)
-            if ok:
-                sp.ok(f"Installed {pkg}")
-                installed += 1
-            else:
-                last_line = output.splitlines()[-1] if output else "unknown error"
-                sp.fail(f"{pkg}: {last_line}")
-                failed.append(pkg)
-
-    return installed, skipped, failed
-
-
 def install_tools(
     wanted: list[str],
     platform: Platform,
@@ -295,7 +532,6 @@ def install_tools(
 
     already_installed = set(scan_tools(platform)) if not force else set()
 
-    # Filter to tools available on this platform
     platform_tools = set()
     for slug, _name, _detect, platforms in _TOOL_DEFS:
         if platform.value in platforms:
@@ -328,7 +564,6 @@ def install_tools(
             continue
 
         with display.spinner(f"Installing {name}") as sp:
-            # Apply CN URL rewrites if needed
             if use_cn:
                 script = "\n".join(apply_cn_rewrites(line) for line in script_lines)
             else:

@@ -82,6 +82,7 @@ _warden() {
                                     _arguments \
                                         '(-o --output)'{-o,--output}'[output archive path]:file:_files' \
                                         '--include-missing[include SSH hosts with missing keys]' \
+                                        '(-s --scan)'{-s,--scan}'[re-scan system packages before backup]' \
                                         '--help[show help]'
                                     ;;
                             esac
