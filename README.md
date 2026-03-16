@@ -15,14 +15,12 @@
 
 ## Overview
 
-Warden captures everything about your development environment — Git identities, SSH configs, system packages, and developer tools — into a single config file. Switch identities with one command, snapshot your installed software, apply configs to a fresh machine, and back everything up into portable archives.
+Warden captures your development environment — git identities, SSH configs, system packages, and developer tools — into a single config file. Switch identities, snapshot installed software, apply configs to a fresh machine, and back everything up into portable archives.
 
-- **Switch** git identity (name, email, signing key, SSH command) in one step
-- **Scan** installed Homebrew formulae/casks, apt packages, and developer tools into config
-- **Apply** config to a new machine — installs only what's missing
-- **Backup** git identities, SSH config, or everything into a portable `.tar.gz`
-- **Restore** from archive with smart config merging
-- **Update** warden itself with `warden update`
+- **Identity** — switch git identity (name, email, signing key) in one step
+- **Packages** — scan, install, and apply across 14 package managers
+- **Backup** — portable `.tar.gz` archives with smart merge on restore
+- **China mirrors** — `WARDEN_USE_CN=1` routes all downloads through CN-accessible mirrors
 
 ---
 
@@ -35,9 +33,9 @@ make install
 ```
 
 ```bash
-warden scan                              # snapshot system packages into config
-warden switch personal                   # apply a git identity
-warden apply                             # install missing packages from config
+warden pkg scan                          # snapshot system packages into config
+warden id switch personal                # apply a git identity
+warden pkg apply                         # install missing packages from config
 warden backup all -o ~/backup.tar.gz     # backup everything
 warden restore all ~/backup.tar.gz       # restore on a new machine
 ```
@@ -66,125 +64,100 @@ Or pass `-c <path>` to use an explicit file.
 
 ```jsonc
 {
-  // Git identity profiles
   "identities": {
     "personal": {
       "name": "Your Name",
       "email": "you@example.com",
       "signing_key": "~/.ssh/id_ed25519.pub",
     },
-    "work": {
-      "name": "Work Name",
-      "email": "work@company.com",
-      "signing_key": "~/.ssh/id_ed25519_work.pub",
-    }
   },
-  // Populated by `warden scan`
+  // Populated by `warden pkg scan`
   "packages": {
-    "brew": {
-      "formulae": ["git", "ripgrep", "fd"],
-      "casks": ["firefox", "visual-studio-code"]
-    },
-    "apt": {
-      "packages": ["build-essential", "curl"]
-    }
+    "brew": { "formulae": ["git", "ripgrep"], "casks": ["firefox"] },
+    "cargo": { "packages": ["bat", "fd-find"] },
+    "npm": { "packages": ["typescript"] },
   },
-  // Developer tools detected on the system
   "tools": ["rustup", "node", "pnpm"]
 }
 ```
 
-The legacy flat format (identity targets at top level) is still supported for reads.
-
-### Identity Config
-
-Each identity auto-configures:
-
-| Config Field | Git Config | Behavior |
-|---|---|---|
-| `name` | `user.name` | Set directly |
-| `email` | `user.email` | Set directly |
-| `signing_key` | `user.signingkey` | Expanded path |
-| *(derived)* | `core.sshCommand` | `ssh -o IdentitiesOnly=yes -i <key>` for non-default keys; unset for `~/.ssh/id_ed25519` |
-| *(auto)* | `gpg.format` | Always `ssh` |
-| *(auto)* | `commit.gpgsign` | Always `true` |
+Legacy flat format (identities at root level) is still supported for reads.
 
 ---
 
 ## Usage
 
-### Identity Management
+### Identity (`warden id`)
 
 ```bash
-warden switch <target>       # apply git identity
-warden list                  # list all targets
-warden show                  # show current git identity
-warden show <target>         # show a specific target
+warden id switch <target>    # apply git identity (case-insensitive)
+warden id list               # list all targets
+warden id show               # show current git identity
+warden id show <target>      # show a specific target
 ```
 
-Target names are case-insensitive.
+Each switch auto-configures `user.name`, `user.email`, `user.signingkey`, `core.sshCommand`, `gpg.format=ssh`, and `commit.gpgsign=true`.
 
-### System Packages
+### Packages (`warden pkg`)
 
 ```bash
-warden scan                  # scan system → update packages/tools in config
-warden apply                 # install missing packages/tools from config
-warden apply --force         # reinstall everything regardless of current state
+warden pkg scan              # scan system → update packages/tools in config
+warden pkg apply             # install missing packages from config
+warden pkg apply --force     # reinstall everything
+warden pkg install MGR:PKG   # install via any manager
 ```
 
-`scan` replaces the packages and tools sections with freshly detected data, preserving identities.
-
-`apply` compares config against what's already installed and only installs the difference. Supported:
-
-| Source | What's Installed |
-|---|---|
-| `packages.brew.formulae` | Homebrew formulae |
-| `packages.brew.casks` | Homebrew casks |
-| `packages.apt.packages` | apt packages (Linux) |
-| `tools` | Developer tools (rustup, node, pnpm, conda, flutter, gcloud, aws, wrangler, etc.) |
-
-### Backup
+`pkg install` uses `manager:package` syntax and shows available managers when run with no args:
 
 ```bash
-warden backup git            # backup identities + signing keys
-warden backup ssh            # backup ~/.ssh/config + identity keys
-warden backup all            # backup everything (identities + SSH + packages + tools)
+warden pkg install brew:ripgrep cask:firefox cargo:bat npm:typescript
+warden pkg install --save brew:fd     # also adds to warden.jsonc
+warden pkg install --any apt:curl     # bypass OS platform check
 ```
 
-| Flag | Description |
-|---|---|
-| `-o FILE` | Custom output path (default: `warden-{type}-backup-{date}.tar.gz`) |
-| `--include-missing` | Include SSH hosts whose key files are missing from disk |
-| `--dry-run` | Preview without creating the archive |
+**Supported package managers:**
 
-**Scoping:** `backup git` and `backup ssh` exclude the packages/tools sections — only `backup all` includes the full config.
+| Manager | Platform | Config key |
+|---|---|---|
+| `brew` | macOS, Linux | `packages.brew.formulae` |
+| `cask` | macOS, Linux | `packages.brew.casks` |
+| `mas` | macOS | `packages.mas.apps` |
+| `apt` | Linux | `packages.apt.packages` |
+| `dnf` | Linux | `packages.dnf.packages` |
+| `pacman` | Linux | `packages.pacman.packages` |
+| `apk` | Linux | `packages.apk.packages` |
+| `snap` | Linux | `packages.snap.packages` |
+| `flatpak` | Linux | `packages.flatpak.packages` |
+| `cargo` | both | `packages.cargo.packages` |
+| `npm` | both | `packages.npm.packages` |
+| `pnpm` | both | `packages.pnpm.packages` |
+| `pipx` | both | `packages.pipx.packages` |
+| `tool` | both | `tools` (dev tool slugs) |
 
-### Restore
+### Backup & Restore
 
 ```bash
-warden restore git <archive>   # restore identities to ~/.warden/
+warden backup git              # identities + signing keys
+warden backup ssh              # ~/.ssh/config + identity keys
+warden backup all              # everything (git + SSH + packages + tools)
+warden backup all -s           # re-scan packages before archiving
+```
+
+```bash
+warden restore git <archive>   # restore to ~/.warden/ (merges config)
 warden restore ssh <archive>   # merge into ~/.ssh/config
 warden restore all <archive>   # restore everything
 ```
 
-**Merge algorithm** on restore:
+`backup git` and `backup ssh` exclude packages. Only `backup all` includes the full config. Use `--scan`/`-s` to refresh packages before archiving — without it, the curated list is preserved as-is.
 
-| Section | Strategy |
-|---|---|
-| `identities` | Incoming overrides existing by name; new names added |
-| `packages.brew.formulae` | Sorted union (deduplicated) |
-| `packages.brew.casks` | Sorted union (deduplicated) |
-| `packages.apt.packages` | Sorted union (deduplicated) |
-| `tools` | Sorted union (deduplicated) |
-| SSH config | Update existing Host blocks by name; append new |
-
-SSH restore saves `~/.ssh/config.bak` before merging. Keys get `chmod 600` (private) / `644` (public).
+**Merge on restore:** identities override by name; package lists are union-merged (sorted, deduplicated); SSH hosts updated by name, new ones appended.
 
 ### Self-Update
 
 ```bash
-warden update                # pull latest + reinstall
-warden update main           # pull from a specific branch
+warden update                  # pull latest + reinstall
+warden update main             # pull from a specific branch
 ```
 
 ### Global Flags
@@ -193,28 +166,19 @@ warden update main           # pull from a specific branch
 |---|---|
 | `-c PATH` | Override config file path |
 | `--dry-run` | Preview changes without writing to disk |
+| `--no-color` | Disable colored output (also: `WARDEN_NO_COLOR=1`) |
 
 ### China Mirror Mode
 
-Set `WARDEN_USE_CN=1` to route all downloads through China-accessible mirrors:
-
-```bash
-WARDEN_USE_CN=1 warden apply         # install packages via CN mirrors
-WARDEN_USE_CN=1 warden update        # self-update via CN mirrors
-WARDEN_USE_CN=1 make install         # install warden itself via CN mirrors
-```
-
-Accepts `1`, `true`, or `yes` (case-insensitive). Affects:
+Set `WARDEN_USE_CN=1` to route downloads through CN-accessible mirrors:
 
 | What | Mirror |
 |---|---|
-| Homebrew bottles | USTC (`mirrors.ustc.edu.cn`) |
-| PyPI / uv index | Aliyun (`mirrors.aliyun.com`) |
+| Homebrew | USTC (`mirrors.ustc.edu.cn`) |
+| PyPI / uv | Aliyun (`mirrors.aliyun.com`) |
 | Rust (rustup) | rsproxy.cn |
-| Node.js (fnm) | npmmirror.com |
-| npm registry | npmmirror.com |
+| Node / npm / pnpm | npmmirror.com |
 | GitHub downloads | ghp.ci proxy |
-| uv installer | ghp.ci proxy |
 
 ---
 
@@ -222,16 +186,16 @@ Accepts `1`, `true`, or `yes` (case-insensitive). Affects:
 
 ```
 warden/
-  __main__.py       # argparse entry point — all subcommand definitions
-  cli.py            # switch, list, show, scan, apply, update commands
-  config.py         # json5 config parsing, resolution, merge algorithm
-  display.py        # rich-powered terminal output (TTY-aware)
+  __main__.py       # argparse CLI — subcommand definitions and dispatch
+  cli.py            # command implementations (id, pkg, update)
+  config.py         # JSON5 config loading, resolution, merge algorithm
+  display.py        # rich-powered output (respects WARDEN_NO_COLOR)
   backup.py         # backup/restore + archive marker logic
   ssh_config.py     # SSH config parser, serializer, merge engine
-  scanner.py        # system package/tool scanning (brew, apt, dev tools)
-  installer.py      # package/tool installation with skip-if-present logic
+  scanner.py        # multi-manager package scanning
+  installer.py      # multi-manager package installation
   cn.py             # China mirror URL rewrites and env vars
-  platform_info.py  # OS/arch detection (macOS/Linux, amd64/arm64)
+  platform_info.py  # OS/arch detection
 bin/warden          # bash wrapper (symlink-friendly)
 completions/        # bash + zsh tab-completion
 tests/              # pytest suite
@@ -284,7 +248,7 @@ Run `make install` to symlink the binary to `/usr/local/bin/warden`. If `/usr/lo
 <details>
 <summary>Config not found</summary>
 
-Warden searches `~/.warden/warden.jsonc`, `~/.ssh/warden.jsonc`, `~/warden.jsonc`, then `./warden.jsonc`. Use `-c <path>` to point to a specific file. Running `warden scan` creates a new config at `~/.warden/warden.jsonc` if none exists.
+Warden searches `~/.warden/warden.jsonc`, `~/.ssh/warden.jsonc`, `~/warden.jsonc`, then `./warden.jsonc`. Use `-c <path>` to point to a specific file. Running `warden pkg scan` creates a new config at `~/.warden/warden.jsonc` if none exists.
 </details>
 
 <details>
@@ -296,7 +260,7 @@ Each archive contains a `.warden-marker` file identifying its type (`git`, `ssh`
 <details>
 <summary>Legacy config format</summary>
 
-If your `warden.jsonc` uses the old flat format (identities at root level), it still works for all identity commands. Run `warden scan` to migrate to the new unified format with packages and tools sections.
+If your `warden.jsonc` uses the old flat format (identities at root level), it still works for all identity commands. Run `warden pkg scan` to migrate to the new unified format.
 </details>
 
 ---
