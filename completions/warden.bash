@@ -5,11 +5,10 @@ _warden_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="id pkg backup restore update"
+    local commands="id pkg backup restore mole update"
     local id_commands="switch list show"
     local pkg_commands="scan apply install"
-    local backup_commands="git ssh all"
-    local restore_commands="git ssh all"
+    local mole_commands="clean optimize analyze status"
 
     case "${cword}" in
         1)
@@ -101,50 +100,48 @@ _warden_completions() {
             return
             ;;
         backup)
-            local sub2=""
-            for ((i = subcmd_pos + 1; i < cword; i++)); do
-                case "${words[i]}" in
-                    git | ssh | all)
-                        sub2="${words[i]}"
-                        break
-                        ;;
-                esac
-            done
-            if [[ -z "${sub2}" ]]; then
-                COMPREPLY=($(compgen -W "${backup_commands} --help" -- "${cur}"))
+            if [[ "${prev}" == "-m" ]]; then
+                COMPREPLY=($(compgen -W "all git ssh pkg git,ssh git,pkg ssh,pkg git,ssh,pkg" -- "${cur}"))
+            elif [[ "${prev}" == "-o" || "${prev}" == "--output" ]]; then
+                _filedir
             else
-                case "${sub2}" in
-                    git)
-                        COMPREPLY=($(compgen -W "-o --output --help" -- "${cur}"))
-                        [[ "${prev}" == "-o" || "${prev}" == "--output" ]] && _filedir
-                        ;;
-                    ssh)
-                        COMPREPLY=($(compgen -W "-o --output --include-missing --help" -- "${cur}"))
-                        [[ "${prev}" == "-o" || "${prev}" == "--output" ]] && _filedir
-                        ;;
-                    all)
-                        COMPREPLY=($(compgen -W "-o --output --include-missing -s --scan --help" -- "${cur}"))
-                        [[ "${prev}" == "-o" || "${prev}" == "--output" ]] && _filedir
-                        ;;
-                esac
+                COMPREPLY=($(compgen -W "-m -o --output --include-missing --skip-scan --help" -- "${cur}"))
             fi
             return
             ;;
         restore)
+            if [[ "${prev}" == "-m" ]]; then
+                COMPREPLY=($(compgen -W "all git ssh pkg git,ssh git,pkg ssh,pkg git,ssh,pkg" -- "${cur}"))
+            else
+                _filedir 'tar.gz'
+                COMPREPLY+=($(compgen -W "-m --help" -- "${cur}"))
+            fi
+            return
+            ;;
+        mole)
             local sub2=""
             for ((i = subcmd_pos + 1; i < cword; i++)); do
                 case "${words[i]}" in
-                    git | ssh | all)
+                    clean | optimize | analyze | status)
                         sub2="${words[i]}"
                         break
                         ;;
                 esac
             done
             if [[ -z "${sub2}" ]]; then
-                COMPREPLY=($(compgen -W "${restore_commands} --help" -- "${cur}"))
+                COMPREPLY=($(compgen -W "${mole_commands} --help" -- "${cur}"))
             else
-                _filedir 'tar.gz'
-                COMPREPLY+=($(compgen -W "--help" -- "${cur}"))
+                case "${sub2}" in
+                    analyze)
+                        _filedir -d
+                        ;;
+                    status)
+                        COMPREPLY=($(compgen -W "--json --help" -- "${cur}"))
+                        ;;
+                    *)
+                        COMPREPLY=($(compgen -W "--help" -- "${cur}"))
+                        ;;
+                esac
             fi
             return
             ;;

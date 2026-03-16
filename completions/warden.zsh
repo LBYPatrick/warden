@@ -10,13 +10,29 @@ _warden_targets() {
     fi
 }
 
+_warden_modules() {
+    local -a modules
+    modules=(
+        'all:all modules'
+        'git:identities and signing keys'
+        'ssh:SSH config and identity keys'
+        'pkg:packages and tools'
+        'git,ssh:identities and SSH'
+        'git,pkg:identities and packages'
+        'ssh,pkg:SSH and packages'
+        'git,ssh,pkg:all modules'
+    )
+    _describe 'modules' modules
+}
+
 _warden() {
     local -a commands
     commands=(
         'id:git identity management'
         'pkg:system package management'
-        'backup:backup identities, SSH config, or both'
-        'restore:restore from backup archive'
+        'backup:backup modules (default: all)'
+        'restore:restore modules from backup archive'
+        'mole:system cleanup and optimization (macOS)'
         'update:self-update warden from git'
     )
 
@@ -100,61 +116,46 @@ _warden() {
                     esac
                     ;;
                 backup)
-                    local -a backup_commands
-                    backup_commands=(
-                        'git:backup identities and signing keys'
-                        'ssh:backup SSH config and identity keys'
-                        'all:backup everything'
-                    )
-                    _arguments -C \
-                        '1:backup type:->backup_type' \
-                        '*::arg:->backup_args'
-                    case "$state" in
-                        backup_type)
-                            _describe 'backup type' backup_commands
-                            ;;
-                        backup_args)
-                            case "${words[1]}" in
-                                git)
-                                    _arguments \
-                                        '(-o --output)'{-o,--output}'[output path]:file:_files' \
-                                        '--help[show help]'
-                                    ;;
-                                ssh)
-                                    _arguments \
-                                        '(-o --output)'{-o,--output}'[output path]:file:_files' \
-                                        '--include-missing[include hosts with missing keys]' \
-                                        '--help[show help]'
-                                    ;;
-                                all)
-                                    _arguments \
-                                        '(-o --output)'{-o,--output}'[output path]:file:_files' \
-                                        '--include-missing[include hosts with missing keys]' \
-                                        '(-s --scan)'{-s,--scan}'[re-scan packages before backup]' \
-                                        '--help[show help]'
-                                    ;;
-                            esac
-                            ;;
-                    esac
+                    _arguments \
+                        '-m[modules to backup]:modules:_warden_modules' \
+                        '(-o --output)'{-o,--output}'[output path]:file:_files' \
+                        '--include-missing[include hosts with missing keys]' \
+                        '--skip-scan[skip re-scanning packages]' \
+                        '--help[show help]'
                     ;;
                 restore)
-                    local -a restore_commands
-                    restore_commands=(
-                        'git:restore git identities'
-                        'ssh:restore SSH config'
-                        'all:restore everything'
+                    _arguments \
+                        '-m[modules to restore]:modules:_warden_modules' \
+                        '1:archive:_files -g "*.tar.gz"' \
+                        '--help[show help]'
+                    ;;
+                mole)
+                    local -a mole_commands
+                    mole_commands=(
+                        'clean:deep system cleanup'
+                        'optimize:rebuild system databases'
+                        'analyze:visual disk space explorer'
+                        'status:system health dashboard'
                     )
                     _arguments -C \
-                        '1:restore type:->restore_type' \
-                        '*::arg:->restore_args'
+                        '1:mole command:->mole_cmd' \
+                        '*::arg:->mole_args'
                     case "$state" in
-                        restore_type)
-                            _describe 'restore type' restore_commands
+                        mole_cmd)
+                            _describe 'mole command' mole_commands
                             ;;
-                        restore_args)
-                            _arguments \
-                                '1:archive:_files -g "*.tar.gz"' \
-                                '--help[show help]'
+                        mole_args)
+                            case "${words[1]}" in
+                                analyze)
+                                    _arguments '1::path:_directories'
+                                    ;;
+                                status)
+                                    _arguments '--json[JSON output]' '--help[show help]'
+                                    ;;
+                                *)
+                                    _arguments '--help[show help]'
+                                    ;;
+                            esac
                             ;;
                     esac
                     ;;

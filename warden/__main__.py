@@ -12,14 +12,7 @@ import re as _re  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from warden import display  # noqa: E402
-from warden.backup import (  # noqa: E402
-    backup_all,
-    backup_git,
-    backup_ssh,
-    restore_all,
-    restore_git,
-    restore_ssh,
-)
+from warden.backup import backup, parse_modules, restore  # noqa: E402
 from warden.cli import (  # noqa: E402
     cmd_apply,
     cmd_install,
@@ -32,6 +25,13 @@ from warden.cli import (  # noqa: E402
 )
 from warden.cn import detect_use_cn  # noqa: E402
 from warden.config import load_config, resolve_config_path  # noqa: E402
+from warden.mole import (  # noqa: E402
+    cmd_mole_analyze,
+    cmd_mole_clean,
+    cmd_mole_optimize,
+    cmd_mole_status,
+    is_macos,
+)
 
 # ---------------------------------------------------------------------------
 # Colored argparse help
@@ -168,81 +168,97 @@ def build_parser() -> argparse.ArgumentParser:
     # ── warden backup ─────────────────────────────────────────
     p_backup = sub.add_parser(
         "backup",
-        help="backup git identities, SSH config, or both",
-        description="Backup git identities, SSH config, or both into a tar.gz archive.",
+        help="backup modules (git, ssh, pkg, or all)",
+        description="Backup selected modules into a tar.gz archive.\n\n"
+        "Defaults to all modules. Use -m to select specific ones.\n"
+        "Modules: git (identities + keys), ssh (SSH config + keys), "
+        "pkg (packages + tools). System packages are re-scanned by default\n"
+        "when pkg is included; use --skip-scan to disable.",
     )
-    backup_sub = _sub(p_backup, dest="backup_command", help="what to backup")
-
-    p_bg = backup_sub.add_parser(
-        "git",
-        help="backup identities and signing keys",
-        description="Backup identities and signing keys. System packages are excluded.",
+    p_backup.add_argument(
+        "-m",
+        metavar="MODULES",
+        default="all",
+        help="modules to backup: git,ssh,pkg (comma-separated) or 'all' (default: all)",
     )
-    p_bg.add_argument("-o", "--output", metavar="FILE", help="output archive path")
-
-    p_bs = backup_sub.add_parser(
-        "ssh",
-        help="backup ~/.ssh/config and identity keys",
-        description="Backup SSH config and all referenced identity key files.",
-    )
-    p_bs.add_argument("-o", "--output", metavar="FILE", help="output archive path")
-    p_bs.add_argument(
-        "--include-missing",
-        action="store_true",
-        default=False,
-        help="include hosts whose key files are missing",
-    )
-
-    p_ba = backup_sub.add_parser(
-        "all",
-        help="backup everything (git + SSH + packages + tools)",
-        description="Backup identities, SSH config, system packages, and tools.",
-    )
-    p_ba.add_argument("-o", "--output", metavar="FILE", help="output archive path")
-    p_ba.add_argument(
+    p_backup.add_argument("-o", "--output", metavar="FILE", help="output archive path")
+    p_backup.add_argument(
         "--include-missing",
         action="store_true",
         default=False,
         help="include SSH hosts whose key files are missing",
     )
-    p_ba.add_argument(
-        "-s",
-        "--scan",
+    p_backup.add_argument(
+        "--skip-scan",
         action="store_true",
         default=False,
-        help="re-scan system packages before backup (updates config)",
+        help="skip re-scanning system packages before backup",
     )
 
     # ── warden restore ────────────────────────────────────────
     p_restore = sub.add_parser(
         "restore",
-        help="restore from backup archive",
-        description="Restore git identities, SSH config, or both from a backup archive.",
+        help="restore modules from backup archive",
+        description="Restore selected modules from a backup archive.\n\n"
+        "Defaults to all modules. Use -m to select specific ones.\n"
+        "Rejects if the archive does not contain a requested module.",
     )
-    restore_sub = _sub(p_restore, dest="restore_command", help="what to restore")
+    p_restore.add_argument(
+        "-m",
+        metavar="MODULES",
+        default="all",
+        help="modules to restore: git,ssh,pkg (comma-separated) or 'all' (default: all)",
+    )
+    p_restore.add_argument("archive", help="path to backup .tar.gz archive")
 
-    p_rg = restore_sub.add_parser(
-        "git",
-        help="restore git identities",
-        description="Restore identities and signing keys to ~/.warden/. "
-        "Merges with existing config (preserving packages/tools).",
-    )
-    p_rg.add_argument("archive", help="path to backup .tar.gz archive")
+    # ── warden mole (macOS only) ─────────────────────────────
+    if is_macos():
+        p_mole = sub.add_parser(
+            "mole",
+            help="system cleanup and optimization (powered by tw93/mole)",
+            description="System cleanup and optimization powered by Mole (tw93/mole). "
+            "Auto-installs Mole via Homebrew if not found. "
+            "For additional Mole features (uninstall, purge, installer, touchid), "
+            "run `mo` directly.",
+        )
+        mole_sub = _sub(p_mole, dest="mole_command", help="mole commands")
 
-    p_rs = restore_sub.add_parser(
-        "ssh",
-        help="restore SSH config",
-        description="Restore SSH config (merged) and identity keys.",
-    )
-    p_rs.add_argument("archive", help="path to backup .tar.gz archive")
+        mole_sub.add_parser(
+            "clean",
+            help="deep system cleanup (caches, logs, temp files)",
+            description="Run Mole deep system cleanup — removes app caches, "
+            "browser caches, developer tool caches, system logs, and temp files.",
+        )
 
-    p_ra = restore_sub.add_parser(
-        "all",
-        help="restore everything",
-        description="Restore identities, SSH config, packages, and tools. "
-        "Merges with existing config.",
-    )
-    p_ra.add_argument("archive", help="path to backup .tar.gz archive")
+        mole_sub.add_parser(
+            "optimize",
+            help="rebuild system databases and services",
+            description="Run Mole system optimization — rebuilds system databases, "
+            "resets network services, refreshes Finder/Dock, and cleans diagnostics.",
+        )
+
+        p_ma = mole_sub.add_parser(
+            "analyze",
+            help="visual disk space explorer",
+            description="Run Mole disk space analyzer with interactive navigation. "
+            "Optionally pass a path to analyze a specific directory.",
+        )
+        p_ma.add_argument(
+            "path", nargs="?", default=None, help="directory to analyze (default: /)"
+        )
+
+        p_ms = mole_sub.add_parser(
+            "status",
+            help="real-time system health dashboard",
+            description="Run Mole system status dashboard — CPU, memory, disk, "
+            "power, network, and overall health score.",
+        )
+        p_ms.add_argument(
+            "--json",
+            action="store_true",
+            default=False,
+            help="output in JSON format",
+        )
 
     # ── warden update ─────────────────────────────────────────
     p_update = sub.add_parser(
@@ -294,12 +310,25 @@ def _print_main_help() -> None:
     _console.print()
     _console.print("[bold]Backup:[/bold]")
     _console.print(
-        "  [cyan]backup[/cyan]  [dim]<git|ssh|all>[/dim]    Backup identities, SSH, or both"
+        "  [cyan]backup[/cyan]  [dim][-m git,ssh,pkg][/dim]  Backup modules (default: all)"
     )
     _console.print(
-        "  [cyan]restore[/cyan] [dim]<git|ssh|all>[/dim]    Restore from archive"
+        "  [cyan]restore[/cyan] [dim][-m git,pkg][/dim] [dim]<archive>[/dim] Restore from archive"
     )
     _console.print()
+    if is_macos():
+        _console.print(
+            "[bold]Maintenance[/bold] [dim](warden mole — powered by tw93/mole)[/dim][bold]:[/bold]"
+        )
+        _console.print("  [cyan]mole clean[/cyan]              Deep system cleanup")
+        _console.print(
+            "  [cyan]mole optimize[/cyan]           Rebuild system databases"
+        )
+        _console.print(
+            "  [cyan]mole analyze[/cyan] [dim][path][/dim]    Disk space explorer"
+        )
+        _console.print("  [cyan]mole status[/cyan]             System health dashboard")
+        _console.print()
     _console.print("[bold]System:[/bold]")
     _console.print(
         "  [cyan]update[/cyan]  [dim][branch][/dim]        Self-update warden"
@@ -380,55 +409,48 @@ def main() -> None:
 
         # ── backup ────────────────────────────────────────
         case "backup":
-            if not getattr(args, "backup_command", None):
-                parser.parse_args(["backup", "--help"])
-                return
-            match args.backup_command:
-                case "git":
-                    config = load_config(args.c)
-                    config_path = resolve_config_path(args.c)
-                    backup_git(config_path, config, args.output, dry_run=dry)
-                case "ssh":
-                    backup_ssh(args.output, args.include_missing, dry_run=dry)
-                case "all":
-                    config_path = resolve_config_path(args.c)
-                    config = load_config(args.c)
-                    if args.scan:
-                        from warden.platform_info import detect_platform
-                        from warden.scanner import scan_system
+            modules = parse_modules(args.m)
+            config = load_config(args.c)
+            if not args.skip_scan and "pkg" in modules:
+                config_path = resolve_config_path(args.c)
+                from warden.platform_info import detect_platform
+                from warden.scanner import scan_system
 
-                        display.info("Re-scanning system packages...")
-                        scanned = scan_system(detect_platform())
-                        from warden.config import serialize_config, update_packages
+                display.info("Re-scanning system packages...")
+                scanned = scan_system(detect_platform())
+                from warden.config import serialize_config, update_packages
 
-                        config = update_packages(
-                            config, scanned["packages"], scanned["tools"]
-                        )
-                        if not dry:
-                            config_path.write_text(
-                                serialize_config(config), encoding="utf-8"
-                            )
-                            display.success(f"Config updated: {config_path}")
-                    backup_all(
-                        config_path,
-                        config,
-                        args.output,
-                        args.include_missing,
-                        dry_run=dry,
-                    )
+                config = update_packages(config, scanned["packages"], scanned["tools"])
+                if not dry:
+                    config_path.write_text(serialize_config(config), encoding="utf-8")
+                    display.success(f"Config updated: {config_path}")
+            backup(
+                modules,
+                config,
+                args.output,
+                args.include_missing,
+                dry_run=dry,
+            )
 
         # ── restore ───────────────────────────────────────
         case "restore":
-            if not getattr(args, "restore_command", None):
-                parser.parse_args(["restore", "--help"])
+            modules = parse_modules(args.m)
+            restore(modules, Path(args.archive), dry_run=dry)
+
+        # ── mole ─────────────────────────────────────────
+        case "mole":
+            if not getattr(args, "mole_command", None):
+                parser.parse_args(["mole", "--help"])
                 return
-            match args.restore_command:
-                case "git":
-                    restore_git(Path(args.archive), dry_run=dry)
-                case "ssh":
-                    restore_ssh(Path(args.archive), dry_run=dry)
-                case "all":
-                    restore_all(Path(args.archive), dry_run=dry)
+            match args.mole_command:
+                case "clean":
+                    cmd_mole_clean(dry_run=dry)
+                case "optimize":
+                    cmd_mole_optimize(dry_run=dry)
+                case "analyze":
+                    cmd_mole_analyze(path=args.path)
+                case "status":
+                    cmd_mole_status(json_output=args.json)
 
         # ── update ────────────────────────────────────────
         case "update":

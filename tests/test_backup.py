@@ -12,14 +12,11 @@ from warden.backup import (
     _validate_archive,
     _validate_tar_member,
     _write_marker,
-    backup_all,
-    backup_git,
-    backup_ssh,
+    backup,
     hashed_key_name,
+    parse_modules,
     path_hash,
-    restore_all,
-    restore_git,
-    restore_ssh,
+    restore,
 )
 
 
@@ -112,24 +109,44 @@ class TestValidateTarMember:
         assert _validate_tar_member("keys/../../etc/passwd") is False
 
 
+class TestParseModules:
+    def test_single_module(self):
+        assert parse_modules("git") == ["git"]
+
+    def test_multiple_modules(self):
+        assert parse_modules("git,ssh") == ["git", "ssh"]
+
+    def test_all_expands(self):
+        assert parse_modules("all") == ["git", "pkg", "ssh"]
+
+    def test_deduplicates(self):
+        assert parse_modules("git,git,ssh") == ["git", "ssh"]
+
+    def test_sorted(self):
+        assert parse_modules("ssh,git") == ["git", "ssh"]
+
+    def test_strips_whitespace(self):
+        assert parse_modules("git , ssh") == ["git", "ssh"]
+
+
 class TestMarkerFile:
     def test_write_and_validate(self, tmp_path):
         archive = tmp_path / "test.tar.gz"
         with tarfile.open(str(archive), "w:gz") as tar:
-            _write_marker(tar, "git")
+            _write_marker(tar, ["git"])
             _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
 
         with tarfile.open(str(archive), "r:gz") as tar:
-            assert _validate_archive(tar, "git") is True
+            assert _validate_archive(tar, ["git"]) is not None
 
-    def test_wrong_type_fails(self, tmp_path):
+    def test_missing_module_fails(self, tmp_path):
         archive = tmp_path / "test.tar.gz"
         with tarfile.open(str(archive), "w:gz") as tar:
-            _write_marker(tar, "git")
+            _write_marker(tar, ["git"])
             _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
 
         with tarfile.open(str(archive), "r:gz") as tar:
-            assert _validate_archive(tar, "ssh") is False
+            assert _validate_archive(tar, ["ssh"]) is None
 
     def test_missing_marker_fails(self, tmp_path):
         archive = tmp_path / "test.tar.gz"
@@ -137,26 +154,50 @@ class TestMarkerFile:
             _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
 
         with tarfile.open(str(archive), "r:gz") as tar:
-            assert _validate_archive(tar, "git") is False
+            assert _validate_archive(tar, ["git"]) is None
 
     def test_missing_content_file_fails(self, tmp_path):
         archive = tmp_path / "test.tar.gz"
         with tarfile.open(str(archive), "w:gz") as tar:
-            _write_marker(tar, "ssh")
+            _write_marker(tar, ["ssh"])
             # Missing ssh_config file
 
         with tarfile.open(str(archive), "r:gz") as tar:
-            assert _validate_archive(tar, "ssh") is False
+            assert _validate_archive(tar, ["ssh"]) is None
 
-    def test_all_type_needs_both(self, tmp_path):
+    def test_all_modules_needs_both(self, tmp_path):
         archive = tmp_path / "test.tar.gz"
         with tarfile.open(str(archive), "w:gz") as tar:
-            _write_marker(tar, "all")
+            _write_marker(tar, ["git", "pkg", "ssh"])
             _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
             _add_bytes_to_tar(tar, "ssh_config", b"Host test\n  HostName test\n")
 
         with tarfile.open(str(archive), "r:gz") as tar:
-            assert _validate_archive(tar, "all") is True
+            result = _validate_archive(tar, ["git", "pkg", "ssh"])
+            assert result is not None
+            assert sorted(result) == ["git", "pkg", "ssh"]
+
+    def test_partial_restore_from_multi_module(self, tmp_path):
+        """Requesting only git from a git+ssh archive should succeed."""
+        archive = tmp_path / "test.tar.gz"
+        with tarfile.open(str(archive), "w:gz") as tar:
+            _write_marker(tar, ["git", "ssh"])
+            _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
+            _add_bytes_to_tar(tar, "ssh_config", b"Host test\n  HostName test\n")
+
+        with tarfile.open(str(archive), "r:gz") as tar:
+            result = _validate_archive(tar, ["git"])
+            assert result is not None
+
+    def test_superset_restore_fails(self, tmp_path):
+        """Requesting ssh from a git-only archive should fail."""
+        archive = tmp_path / "test.tar.gz"
+        with tarfile.open(str(archive), "w:gz") as tar:
+            _write_marker(tar, ["git"])
+            _add_bytes_to_tar(tar, "warden.jsonc", b"{}")
+
+        with tarfile.open(str(archive), "r:gz") as tar:
+            assert _validate_archive(tar, ["git", "ssh"]) is None
 
 
 class TestBackupRestoreGitEndToEnd:
@@ -165,7 +206,7 @@ class TestBackupRestoreGitEndToEnd:
         config_data = json5.loads(fake_warden_config.read_text())
 
         # Backup
-        backup_git(fake_warden_config, config_data, str(archive))
+        backup(["git"], config_data, str(archive))
         assert archive.is_file()
 
         # Verify archive contents
@@ -193,7 +234,7 @@ class TestBackupRestoreGitEndToEnd:
         try:
             bmod.WARDEN_DIR = restore_dir / ".warden"
             bmod.KEYS_DIR = bmod.WARDEN_DIR / "keys"
-            restore_git(archive)
+            restore(["git"], archive)
             assert (bmod.WARDEN_DIR / "warden.jsonc").is_file()
             assert bmod.KEYS_DIR.is_dir()
             restored_keys = list(bmod.KEYS_DIR.iterdir())
@@ -209,7 +250,7 @@ class TestBackupRestoreGitEndToEnd:
         archive = tmp_path / "git-backup.tar.gz"
         config_data = json5.loads(fake_warden_config.read_text())
 
-        backup_git(fake_warden_config, config_data, str(archive))
+        backup(["git"], config_data, str(archive))
 
         import warden.backup as bmod
 
@@ -229,7 +270,7 @@ class TestBackupRestoreGitEndToEnd:
             dest = bmod.WARDEN_DIR / "warden.jsonc"
             dest.write_text(json5.dumps(existing_config), encoding="utf-8")
 
-            restore_git(archive)
+            restore(["git"], archive)
 
             merged = json5.loads(dest.read_text(encoding="utf-8"))
             # Identities merged
@@ -250,6 +291,9 @@ class TestBackupRestoreSshEndToEnd:
     ):
         archive = tmp_path / "ssh-backup.tar.gz"
 
+        # Need config_data for unified backup (even if ssh doesn't use it)
+        config_data = {"identities": {}}
+
         # Point Path.home() to tmp_path so backup finds the fake ssh config
         monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
 
@@ -261,7 +305,7 @@ class TestBackupRestoreSshEndToEnd:
             bmod.WARDEN_DIR = tmp_path / ".warden"
             bmod.KEYS_DIR = bmod.WARDEN_DIR / "keys"
 
-            backup_ssh(str(archive))
+            backup(["ssh"], config_data, str(archive))
             assert archive.is_file()
 
             with tarfile.open(str(archive), "r:gz") as tar:
@@ -271,7 +315,7 @@ class TestBackupRestoreSshEndToEnd:
 
             # Remove original config to test fresh restore
             (tmp_path / ".ssh" / "config").unlink()
-            restore_ssh(archive)
+            restore(["ssh"], archive)
             assert (tmp_path / ".ssh" / "config").is_file()
         finally:
             bmod.WARDEN_DIR = orig_warden
@@ -296,7 +340,7 @@ class TestBackupRestoreAllEndToEnd:
             bmod.WARDEN_DIR = tmp_path / ".warden"
             bmod.KEYS_DIR = bmod.WARDEN_DIR / "keys"
 
-            backup_all(fake_warden_config, config_data, str(archive))
+            backup(["git", "pkg", "ssh"], config_data, str(archive))
             assert archive.is_file()
 
             with tarfile.open(str(archive), "r:gz") as tar:
@@ -314,7 +358,7 @@ class TestBackupRestoreAllEndToEnd:
 
             # Restore
             (tmp_path / ".ssh" / "config").unlink()
-            restore_all(archive)
+            restore(["git", "pkg", "ssh"], archive)
             assert (bmod.WARDEN_DIR / "warden.jsonc").is_file()
             assert (tmp_path / ".ssh" / "config").is_file()
             assert bmod.KEYS_DIR.is_dir()

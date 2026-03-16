@@ -11,3 +11,4 @@ warden.jsonc
 warden-git-backup-*.tar.gz
 warden-ssh-backup-*.tar.gz
 warden-all-backup-*.tar.gz
+warden-backup-*.tar.gz

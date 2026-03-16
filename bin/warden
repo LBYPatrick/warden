@@ -16,5 +16,6 @@ case "${WARDEN_USE_CN:-}" in
         ;;
 esac
 
+export WARDEN_ORIG_CWD="${WARDEN_ORIG_CWD:-$PWD}"
 cd "$WARDEN_ROOT" || exit 1
 exec uv run python -m warden "$@"
