@@ -133,8 +133,30 @@ else
 fi
 echo ""
 
-# Step 3: Shell completions
-echo "${BOLD}[3/4] Shell completions${NC}"
+# Step 3: Man page
+echo "${BOLD}[3/5] Man page${NC}"
+
+MAN_DIR="/usr/local/share/man/man1"
+MAN_SRC="$PROJECT_ROOT/man/warden.1"
+if [ -f "$MAN_SRC" ]; then
+    if [ -w "$MAN_DIR" ] || [ "$(id -u)" -eq 0 ]; then
+        mkdir -p "$MAN_DIR"
+        cp "$MAN_SRC" "$MAN_DIR/warden.1"
+        echo "  ${GREEN}✓${NC} Man page installed to $MAN_DIR/warden.1"
+    elif command -v sudo &>/dev/null; then
+        sudo mkdir -p "$MAN_DIR"
+        sudo cp "$MAN_SRC" "$MAN_DIR/warden.1"
+        echo "  ${GREEN}✓${NC} Man page installed to $MAN_DIR/warden.1 (via sudo)"
+    else
+        echo "  ${YELLOW}⊘${NC} Cannot write to $MAN_DIR — skipping man page"
+    fi
+else
+    echo "  ${YELLOW}⊘${NC} Man page source not found — skipping"
+fi
+echo ""
+
+# Step 4: Shell completions
+echo "${BOLD}[4/5] Shell completions${NC}"
 
 COMP_DIR="$PROJECT_ROOT/completions"
 SHELL_NAME="$(basename "$SHELL")"
@@ -159,8 +181,8 @@ else
 fi
 echo ""
 
-# Step 4: Verify
-echo "${BOLD}[4/4] Verification${NC}"
+# Step 5: Verify
+echo "${BOLD}[5/5] Verification${NC}"
 
 run_with_progress "Running smoke test" "$STATUS_DIR/smoke.log" \
     uv run python -m warden --help
@@ -173,6 +195,7 @@ echo "${BOLD}===========================================${NC}"
 echo ""
 echo "  ${GREEN}✓${NC} Dependencies"
 echo "  ${GREEN}✓${NC} Binary"
+echo "  ${GREEN}✓${NC} Man page"
 echo "  ${GREEN}✓${NC} Completions"
 echo "  ${GREEN}✓${NC} Verification"
 echo ""

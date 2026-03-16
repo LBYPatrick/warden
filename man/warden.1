@@ -1,0 +1,229 @@
+.\" Warden man page
+.TH WARDEN 1 "2026-03-16" "1.0.0" "Warden Manual"
+.SH NAME
+warden \- describe the system you live in
+.SH SYNOPSIS
+.B warden
+.RI [ command ]
+.RI [ subcommand ]
+.RI [ options ]
+.SH DESCRIPTION
+Warden captures your development environment \(em git identities, SSH configs,
+system packages, and developer tools \(em into a single config file. Switch
+identities, snapshot installed software, apply configs to a fresh machine, back
+everything up into portable archives, and maintain your system with integrated
+cleanup tools.
+.PP
+Configuration is stored in
+.B warden.jsonc
+(JSON5 with comments and trailing commas). Warden searches the following
+locations in order:
+.RS
+.IP 1. 3
+\fB~/.warden/warden.jsonc\fR
+.IP 2. 3
+\fB~/.ssh/warden.jsonc\fR
+.IP 3. 3
+\fB~/warden.jsonc\fR
+.IP 4. 3
+\fB./warden.jsonc\fR
+.RE
+.PP
+Use
+.B \-c PATH
+to override with an explicit config file.
+.SH COMMANDS
+.SS "Identity (warden id)"
+.TP
+.B id switch \fItarget\fR
+Apply a git identity from config. Sets user.name, user.email, user.signingkey,
+core.sshCommand, gpg.format, and commit.gpgsign globally.
+.TP
+.B id list
+List all identity targets defined in the config.
+.TP
+.B id show \fR[\fItarget\fR]
+Show the current git identity, or a specific target's config if \fItarget\fR is
+given.
+.SS "Packages (warden pkg)"
+.TP
+.B pkg scan
+Scan the system for installed packages and developer tools, then update the
+packages and tools sections in warden.jsonc.
+.TP
+.B pkg apply \fR[\fB\-f\fR|\fB\-\-force\fR]
+Install packages and developer tools from config. Already-installed items are
+skipped unless \fB\-\-force\fR is used.
+.TP
+.B pkg install \fIMANAGER\fB:\fIPKG\fR [\fIMANAGER\fB:\fIPKG\fR ...]
+Install packages using manager:package syntax. Run with no arguments to see
+available managers and their install status.
+.RS
+.TP
+.B \-\-save
+Also add installed packages to warden.jsonc.
+.TP
+.B \-\-any
+Bypass OS platform check (allow any manager).
+.RE
+.SS "Backup (warden backup)"
+.TP
+.B backup \fR[\fB\-m\fR \fIMODULES\fR] [\fB\-o\fR \fIFILE\fR] [\fB\-\-skip\-scan\fR] [\fB\-\-include\-missing\fR]
+Backup selected modules into a tar.gz archive. \fIMODULES\fR is a
+comma-separated list of: \fBgit\fR (identities + signing keys), \fBssh\fR
+(SSH config + identity keys), \fBpkg\fR (packages + tools). Use \fBall\fR
+as shorthand for all modules. Defaults to \fBall\fR.
+.PP
+When the \fBpkg\fR module is included, system packages are re-scanned
+automatically before archiving. Use \fB\-\-skip\-scan\fR to disable this.
+.RS
+.TP
+.B \-\-skip\-scan
+Skip re-scanning system packages before backup.
+.TP
+.B \-\-include\-missing
+Include SSH hosts whose key files are missing on disk.
+.TP
+.B \-o \fIFILE\fR
+Output archive path (default: auto-generated with date).
+.RE
+.SS "Restore (warden restore)"
+.TP
+.B restore \fR[\fB\-m\fR \fIMODULES\fR] \fIarchive\fR
+Restore selected modules from a backup archive. \fIMODULES\fR is a
+comma-separated list of: \fBgit\fR, \fBssh\fR, \fBpkg\fR, or \fBall\fR.
+Defaults to \fBall\fR.
+Exits with an error if the archive does not contain a requested module.
+.SS "Maintenance (warden mole)"
+System cleanup and optimization powered by
+.BR Mole " (" tw93/mole ")."
+Mole is auto-installed via Homebrew if not found on the system.
+.TP
+.B mole clean
+Deep system cleanup \(em removes app caches, browser caches, developer tool
+caches, system logs, and temporary files.
+.TP
+.B mole optimize
+System optimization \(em rebuilds system databases, resets network services,
+refreshes Finder/Dock, cleans diagnostic logs.
+.TP
+.B mole analyze \fR[\fIpath\fR]
+Visual disk space explorer with interactive navigation. Pass a path to analyze
+a specific directory.
+.TP
+.B mole status \fR[\fB\-\-json\fR]
+Real-time system health dashboard showing CPU, memory, disk, power, network,
+and an overall health score. Use \fB\-\-json\fR for machine-readable output.
+.PP
+For additional Mole features not exposed through warden (uninstall, purge,
+installer, touchid), run the
+.B mo
+command directly:
+.RS
+.nf
+mo              # interactive menu
+mo uninstall    # smart app uninstaller
+mo purge        # clean build artifacts (node_modules, target, etc.)
+mo installer    # find and remove .dmg/.pkg/.zip installers
+mo touchid      # configure Touch ID for sudo
+.fi
+.RE
+.PP
+See
+.UR https://github.com/tw93/mole
+.UE
+for full documentation.
+.SS "System"
+.TP
+.B update \fR[\fIbranch\fR]
+Self-update warden by pulling latest from git and reinstalling. Defaults to the
+current branch.
+.SH GLOBAL OPTIONS
+.TP
+.B \-c \fIPATH\fR
+Override the config file path.
+.TP
+.B \-\-dry\-run
+Preview changes without writing to disk. Supported by all mutating commands.
+.TP
+.B \-\-no\-color
+Disable colored output. Equivalent to setting \fBWARDEN_NO_COLOR=1\fR.
+.SH ENVIRONMENT
+.TP
+.B WARDEN_NO_COLOR
+Set to \fB1\fR, \fBtrue\fR, or \fByes\fR to disable colored output. The
+standard \fBNO_COLOR\fR variable is also respected.
+.TP
+.B WARDEN_USE_CN
+Set to \fB1\fR, \fBtrue\fR, or \fByes\fR to route downloads through
+China-accessible mirrors (Homebrew via USTC, PyPI via Aliyun, Rust via
+rsproxy.cn, Node/npm via npmmirror.com, GitHub via ghp.ci).
+.SH FILES
+.TP
+.B ~/.warden/warden.jsonc
+Primary config file location.
+.TP
+.B ~/.warden/keys/
+Directory where backup-restored signing keys are stored.
+.TP
+.B ~/.ssh/config
+SSH config file that the \fBssh\fR module operates on during backup and restore.
+.SH SUPPORTED PACKAGE MANAGERS
+brew, cask, mas, apt, dnf, pacman, apk, snap, flatpak, cargo, npm, pnpm, pipx,
+and developer tools (rustup, node, pnpm, go, etc.).
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+Error (config not found, archive invalid, installation failure, etc.).
+.SH EXAMPLES
+.nf
+# Snapshot your system
+warden pkg scan
+
+# Switch git identity
+warden id switch personal
+
+# Install packages from config
+warden pkg apply
+
+# Backup everything (default)
+warden backup -o ~/backup.tar.gz
+
+# Backup only git identities and packages
+warden backup -m git,pkg
+
+# Backup without re-scanning packages
+warden backup --skip-scan
+
+# Restore on a new machine
+warden restore ~/backup.tar.gz
+
+# Restore only packages from an archive
+warden restore -m pkg ~/backup.tar.gz
+
+# Clean up the system
+warden mole clean
+
+# Check system health
+warden mole status
+.fi
+.SH AUTHORS
+LBYPatrick and contributors.
+.PP
+System maintenance features powered by Mole (\fBtw93/mole\fR) \(em we love it.
+.SH SEE ALSO
+.BR mo (1),
+.BR git (1),
+.BR ssh_config (5),
+.BR brew (1)
+.PP
+.UR https://github.com/LBYPatrick/warden
+Warden on GitHub
+.UE
+.PP
+.UR https://github.com/tw93/mole
+Mole on GitHub
+.UE

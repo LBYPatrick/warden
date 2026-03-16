@@ -44,6 +44,17 @@ fi
 rm -rf "$PROJECT_ROOT/__pycache__" "$PROJECT_ROOT/.ruff_cache" "$PROJECT_ROOT/warden/__pycache__"
 echo -e "  ${GREEN}✓${NC} Removed caches"
 
+# Remove man page
+MAN_PAGE="/usr/local/share/man/man1/warden.1"
+if [ -f "$MAN_PAGE" ]; then
+    if [ -w "$(dirname "$MAN_PAGE")" ] || [ "$(id -u)" -eq 0 ]; then
+        rm -f "$MAN_PAGE"
+    else
+        sudo rm -f "$MAN_PAGE"
+    fi
+    echo -e "  ${GREEN}✓${NC} Removed man page"
+fi
+
 # Remove completions
 if [ -L "${HOME}/.zsh/completions/_warden" ]; then
     rm -f "${HOME}/.zsh/completions/_warden"
