@@ -86,6 +86,22 @@ def _sub(parent, **kw):
 # ---------------------------------------------------------------------------
 
 
+def _ensure_config(override: str | None) -> tuple[dict, Path]:
+    """Load config if it exists, otherwise create an empty one at the default path.
+
+    Returns (config_data, config_path).
+    """
+    config_path = resolve_config_path(override)
+    if config_path is not None:
+        return load_config(override), config_path
+
+    config_path = Path.home() / ".warden" / "warden.jsonc"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("{}\n", encoding="utf-8")
+    display.info(f"Created empty config at {config_path}")
+    return {}, config_path
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="warden",
@@ -367,13 +383,13 @@ def main() -> None:
                 return
             match args.id_command:
                 case "switch":
-                    config = load_config(args.c)
+                    config, _ = _ensure_config(args.c)
                     cmd_switch(config, args.target, dry_run=dry)
                 case "list":
-                    config = load_config(args.c)
+                    config, _ = _ensure_config(args.c)
                     cmd_list(config)
                 case "show":
-                    config = load_config(args.c)
+                    config, _ = _ensure_config(args.c)
                     cmd_show(config, getattr(args, "target", None))
 
         # ── pkg ───────────────────────────────────────────
@@ -383,15 +399,10 @@ def main() -> None:
                 return
             match args.pkg_command:
                 case "scan":
-                    config_path = resolve_config_path(args.c)
-                    if config_path is None:
-                        config_path = Path.home() / ".warden" / "warden.jsonc"
-                        config_path.parent.mkdir(parents=True, exist_ok=True)
-                        config_path.write_text("{}\n", encoding="utf-8")
-                    config = load_config(args.c or str(config_path))
+                    config, config_path = _ensure_config(args.c)
                     cmd_scan(config, config_path, dry_run=dry)
                 case "apply":
-                    config = load_config(args.c)
+                    config, _ = _ensure_config(args.c)
                     cmd_apply(config, force=args.force, dry_run=dry, use_cn=cn)
                 case "install":
                     if not args.packages or args.help:
@@ -410,9 +421,8 @@ def main() -> None:
         # ── backup ────────────────────────────────────────
         case "backup":
             modules = parse_modules(args.m)
-            config = load_config(args.c)
+            config, config_path = _ensure_config(args.c)
             if not args.skip_scan and "pkg" in modules:
-                config_path = resolve_config_path(args.c)
                 from warden.platform_info import detect_platform
                 from warden.scanner import scan_system
 

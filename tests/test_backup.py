@@ -322,6 +322,53 @@ class TestBackupRestoreSshEndToEnd:
             bmod.KEYS_DIR = orig_keys
 
 
+class TestBackupNoConfig:
+    """Backup should work without an existing warden.jsonc."""
+
+    def test_backup_ssh_without_config(
+        self, tmp_path, fake_keys, fake_ssh_config, monkeypatch
+    ):
+        """SSH-only backup should succeed with no warden.jsonc at all."""
+        archive = tmp_path / "ssh-noconfig.tar.gz"
+
+        monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+
+        import warden.backup as bmod
+
+        orig_warden = bmod.WARDEN_DIR
+        orig_keys = bmod.KEYS_DIR
+        try:
+            bmod.WARDEN_DIR = tmp_path / ".warden"
+            bmod.KEYS_DIR = bmod.WARDEN_DIR / "keys"
+
+            # No warden.jsonc exists — pass empty config
+            backup(["ssh"], {}, str(archive))
+            assert archive.is_file()
+
+            with tarfile.open(str(archive), "r:gz") as tar:
+                names = tar.getnames()
+                assert MARKER_FILE in names
+                assert "ssh_config" in names
+        finally:
+            bmod.WARDEN_DIR = orig_warden
+            bmod.KEYS_DIR = orig_keys
+
+    def test_backup_git_without_config(self, tmp_path):
+        """Git backup with empty config produces a valid (empty) archive."""
+        archive = tmp_path / "git-noconfig.tar.gz"
+
+        backup(["git"], {}, str(archive))
+        assert archive.is_file()
+
+        with tarfile.open(str(archive), "r:gz") as tar:
+            names = tar.getnames()
+            assert MARKER_FILE in names
+            assert "warden.jsonc" in names
+            with tar.extractfile(tar.getmember("warden.jsonc")) as f:
+                archived = json5.loads(f.read().decode("utf-8"))
+            assert archived.get("identities", {}) == {}
+
+
 class TestBackupRestoreAllEndToEnd:
     def test_backup_and_restore(
         self, tmp_path, fake_keys, fake_warden_config, fake_ssh_config, monkeypatch
