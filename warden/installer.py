@@ -243,10 +243,22 @@ def install_mas_apps(
 # ---------------------------------------------------------------------------
 
 
+def _apt_available_packages() -> set[str]:
+    """Get the set of all package names available in apt cache."""
+    ok, output = _run(["apt-cache", "pkgnames"], timeout=60)
+    if not ok:
+        return set()
+    return set(line.strip() for line in output.splitlines() if line.strip())
+
+
 def install_apt_packages(
     wanted: list[str], *, force: bool = False, dry_run: bool = False
 ) -> tuple[int, int, list[str]]:
-    """Install apt packages with bulk-then-individual fallback."""
+    """Install apt packages with bulk-then-individual fallback.
+
+    Filters packages through apt-cache to skip unavailable ones, then
+    installs all available packages in a single apt-get call.
+    """
     if not wanted:
         return 0, 0, []
 
@@ -261,28 +273,48 @@ def install_apt_packages(
     if not to_install:
         return 0, skipped, []
 
-    if dry_run:
-        for p in to_install:
-            display.info(f"Would install apt package: {p}")
-        return 0, skipped, []
-
     display.info("Updating apt package index...")
     _run(["sudo", "apt-get", "update", "-qq"], timeout=120)
 
-    # Try bulk install first
-    ok, output = _run(["sudo", "apt-get", "install", "-y", *to_install], timeout=600)
+    # Filter to only packages that exist in apt cache
+    available = _apt_available_packages()
+    if available:
+        installable = [p for p in to_install if p in available]
+        unavailable = [p for p in to_install if p not in available]
+        if unavailable:
+            display.warn(
+                f"Skipping {len(unavailable)} unavailable apt packages: "
+                + ", ".join(unavailable[:10])
+                + ("..." if len(unavailable) > 10 else "")
+            )
+    else:
+        # apt-cache failed — try installing everything and let apt sort it out
+        installable = to_install
+        unavailable = []
+
+    if not installable:
+        return 0, skipped, []
+
+    if dry_run:
+        for p in installable:
+            display.info(f"Would install apt package: {p}")
+        return 0, skipped, []
+
+    # Bulk install all at once
+    ok, output = _run(["sudo", "apt-get", "install", "-y", *installable], timeout=600)
     if ok:
-        return len(to_install), skipped, []
+        return len(installable), skipped, unavailable
 
     # Fall back to individual installs
-    return _install_packages_generic(
-        to_install,
+    inst, _, failed = _install_packages_generic(
+        installable,
         label="apt",
         binary="apt-get",
         scan_fn=lambda: [],  # Already filtered
         install_cmd=["sudo", "apt-get", "install", "-y"],
         force=True,
     )
+    return inst, skipped, failed + unavailable
 
 
 # ---------------------------------------------------------------------------

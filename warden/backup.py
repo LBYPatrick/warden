@@ -12,6 +12,7 @@ from typing import Any
 
 from warden import display
 from warden.config import get_identities, merge_configs, serialize_config
+from warden.platform_info import Platform, detect_platform
 from warden.ssh_config import (
     HostBlock,
     get_identity_files,
@@ -384,6 +385,63 @@ def _collect_ssh_keys(
 
 
 # ---------------------------------------------------------------------------
+# APT sources backup/restore helpers (Linux only)
+# ---------------------------------------------------------------------------
+
+
+def _backup_apt_sources(tar: tarfile.TarFile) -> int:
+    """Add apt source files to the archive. Returns count of files added."""
+    from warden.scanner import scan_apt_sources
+
+    files = scan_apt_sources()
+    for archive_path, content in files:
+        _add_bytes_to_tar(tar, archive_path, content)
+    return len(files)
+
+
+def _restore_apt_sources(tar: tarfile.TarFile, *, dry_run: bool = False) -> int:
+    """Restore apt source files from archive. Returns count of files restored."""
+    import subprocess
+
+    count = 0
+    for member in tar.getmembers():
+        if not member.name.startswith("apt-sources/") or not member.isfile():
+            continue
+        # Map archive path back to /etc/apt/
+        relative = member.name.removeprefix("apt-sources/")
+        dest = Path("/etc/apt") / relative
+        if dry_run:
+            display.info(f"Would restore apt source: {dest}")
+            count += 1
+            continue
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with tar.extractfile(member) as src:
+            if src:
+                content = src.read()
+                try:
+                    dest.write_bytes(content)
+                except PermissionError:
+                    # Try with sudo via tee
+                    proc = subprocess.run(
+                        ["sudo", "tee", str(dest)],
+                        input=content,
+                        capture_output=True,
+                    )
+                    if proc.returncode != 0:
+                        display.warn(f"Failed to restore {dest}")
+                        continue
+                display.success(f"Restored apt source: {dest}")
+                count += 1
+    return count
+
+
+def _has_apt_sources(tar: tarfile.TarFile) -> bool:
+    """Check if archive contains apt source files."""
+    return any(n.startswith("apt-sources/") for n in tar.getnames())
+
+
+# ---------------------------------------------------------------------------
 # Merge helpers
 # ---------------------------------------------------------------------------
 
@@ -537,6 +595,11 @@ def backup(
 
         written = _add_keys_to_tar(tar, all_keys)
 
+        # Backup apt sources on Linux when pkg module is included
+        apt_source_count = 0
+        if has_pkg and detect_platform() == Platform.LINUX:
+            apt_source_count = _backup_apt_sources(tar)
+
     elapsed = time.monotonic() - start
     display.success_timed(f"Archive created: {out_path}", elapsed)
 
@@ -547,6 +610,8 @@ def backup(
         summary_parts.append(f"{len(path_map)} SSH hosts")
     if written:
         summary_parts.append(f"{written} key files")
+    if apt_source_count:
+        summary_parts.append(f"{apt_source_count} apt source files")
     if summary_parts:
         display.info(", ".join(summary_parts))
 
@@ -556,18 +621,43 @@ def backup(
 # ---------------------------------------------------------------------------
 
 
+def read_archive_modules(archive_path: Path) -> list[str] | None:
+    """Read the modules list from a backup archive without full validation.
+
+    Returns the list of modules stored in the archive marker, or None on error.
+    """
+    if not archive_path.is_file():
+        display.error(f"Archive not found: {archive_path}")
+        return None
+
+    try:
+        with tarfile.open(str(archive_path), "r:gz") as tar:
+            return _read_marker(tar)
+    except tarfile.TarError:
+        display.error("Not a valid tar.gz archive")
+        return None
+
+
 def restore(
-    modules: list[str],
+    modules: list[str] | None,
     archive_path: Path,
     *,
     dry_run: bool = False,
 ) -> None:
     """Restore selected modules from a backup archive.
 
+    If modules is None, auto-detects from the archive marker.
     Validates that each requested module is present in the archive.
     Modules: 'git' (identities + keys), 'ssh' (SSH config + keys),
     'pkg' (packages + tools).
     """
+    # Auto-detect modules from archive when not specified
+    if modules is None:
+        modules = read_archive_modules(archive_path)
+        if modules is None:
+            sys.exit(1)
+        display.info(f"Auto-detected modules from archive: {', '.join(modules)}")
+
     label_parts = [m for m in ALL_MODULES if m in modules]
     label = "Dry Run — " if dry_run else ""
     mod_label = ", ".join(label_parts)
@@ -599,11 +689,16 @@ def restore(
                     )
                 else:
                     display.info(f"Would write SSH config to {ssh_config_path}")
+            if has_pkg and _has_apt_sources(tar):
+                _restore_apt_sources(tar, dry_run=True)
             display.info("No changes made")
             return
 
+        # Check if we need to restore apt sources
+        restore_apt = has_pkg and _has_apt_sources(tar)
+
         step = 0
-        total_steps = sum([has_keys, has_git or has_pkg, has_ssh])
+        total_steps = sum([has_keys, has_git or has_pkg, has_ssh, restore_apt])
 
         key_count = 0
         if has_keys:
@@ -633,6 +728,12 @@ def restore(
                     display.error("Failed to read ssh_config from archive")
                     sys.exit(1)
 
+        apt_count = 0
+        if restore_apt:
+            step += 1
+            display.step(step, total_steps, "Restoring apt sources")
+            apt_count = _restore_apt_sources(tar)
+
     if incoming_text is not None:
         _merge_warden_config(incoming_text)
     if restored_ssh is not None:
@@ -646,6 +747,8 @@ def restore(
         parts.append(f"config to {WARDEN_DIR / 'warden.jsonc'}")
     if restored_ssh is not None:
         parts.append("SSH config merged")
+    if apt_count:
+        parts.append(f"{apt_count} apt source files")
     display.success_timed("Restored " + ", ".join(parts), elapsed)
 
 

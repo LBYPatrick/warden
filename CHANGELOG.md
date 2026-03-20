@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Backup and restore apt sources (`/etc/apt/sources.list`, `sources.list.d/`) with the `pkg` module on Linux
+- Restore auto-detects available modules from archive marker when `-m` is not specified
+
+### Changed
+- APT scanning now uses `apt-mark showmanual` to capture only user-installed packages (falls back to `dpkg --get-selections`)
+- APT install filters packages through `apt-cache pkgnames` to skip unavailable ones before bulk install
+- `bin/warden` resolves uv from `~/.local/bin` or `~/.cargo/bin` when not in PATH
+- `install.sh` adds uv install paths to PATH immediately after fresh install
+
 ## [1.1.0] - 2026-03-16
 
 ### Added

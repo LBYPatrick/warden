@@ -109,6 +109,12 @@ if ! command -v uv &>/dev/null; then
         run_with_progress "Installing uv" "$STATUS_DIR/uv.log" \
             bash -c 'curl -LsSf https://astral.sh/uv/install.sh | sh'
     fi
+    # uv installs to ~/.local/bin by default — add to PATH for this session
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    if ! command -v uv &>/dev/null; then
+        echo "  ${RED}✗${NC} uv not found after install — check ~/.local/bin or ~/.cargo/bin"
+        exit 1
+    fi
 else
     echo "  ${GREEN}✓${NC} uv already installed"
 fi

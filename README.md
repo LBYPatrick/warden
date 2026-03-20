@@ -148,13 +148,13 @@ warden pkg install --any apt:curl     # bypass OS platform check
 
 ### Backup & Restore
 
-Use `-m` to select which modules to backup or restore. Defaults to `all`.
+Use `-m` to select which modules to backup or restore. Backup defaults to `all`. Restore auto-detects modules from the archive when `-m` is omitted.
 
 | Module | What it includes |
 |---|---|
 | `git` | Identities + signing keys |
 | `ssh` | `~/.ssh/config` + identity keys |
-| `pkg` | Packages + tools from config |
+| `pkg` | Packages + tools from config + apt sources (Linux) |
 
 ```bash
 warden backup                         # backup everything (scans packages first)
@@ -165,12 +165,15 @@ warden backup -o ~/bak.tar.gz         # custom output path
 ```
 
 ```bash
-warden restore ~/backup.tar.gz        # restore everything
+warden restore ~/backup.tar.gz        # auto-detect and restore available modules
 warden restore -m git ~/backup.tar.gz # restore just identities
 warden restore -m pkg ~/backup.tar.gz # restore just packages
+warden restore -m all ~/backup.tar.gz # explicitly restore all modules
 ```
 
-Restore validates that the archive contains each requested module. Merge on restore: identities override by name; package lists union-merged (sorted, deduplicated); SSH hosts updated by name, new ones appended.
+Restore auto-detects available modules from the archive marker when `-m` is not specified. Use `-m` to override. Merge on restore: identities override by name; package lists union-merged (sorted, deduplicated); SSH hosts updated by name, new ones appended. On Linux, apt sources are backed up and restored with the `pkg` module.
+
+**Linux improvements:** APT scanning captures only user-installed packages (via `apt-mark showmanual`), not auto-installed dependencies. APT install filters packages through `apt-cache` to skip unavailable ones, then installs all available packages in a single `apt-get` call.
 
 ### Maintenance (`warden mole`) — macOS only
 

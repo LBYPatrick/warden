@@ -216,14 +216,15 @@ def build_parser() -> argparse.ArgumentParser:
         "restore",
         help="restore modules from backup archive",
         description="Restore selected modules from a backup archive.\n\n"
-        "Defaults to all modules. Use -m to select specific ones.\n"
-        "Rejects if the archive does not contain a requested module.",
+        "By default, auto-detects available modules from the archive marker.\n"
+        "Use -m to select specific ones. Rejects if a requested module is missing.",
     )
     p_restore.add_argument(
         "-m",
         metavar="MODULES",
-        default="all",
-        help="modules to restore: git,ssh,pkg (comma-separated) or 'all' (default: all)",
+        default=None,
+        help="modules to restore: git,ssh,pkg (comma-separated) or 'all' "
+        "(default: auto-detect from archive)",
     )
     p_restore.add_argument("archive", help="path to backup .tar.gz archive")
 
@@ -444,7 +445,7 @@ def main() -> None:
 
         # ── restore ───────────────────────────────────────
         case "restore":
-            modules = parse_modules(args.m)
+            modules = parse_modules(args.m) if args.m is not None else None
             restore(modules, Path(args.archive), dry_run=dry)
 
         # ── mole ─────────────────────────────────────────

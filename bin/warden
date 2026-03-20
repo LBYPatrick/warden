@@ -18,4 +18,17 @@ esac
 
 export WARDEN_ORIG_CWD="${WARDEN_ORIG_CWD:-$PWD}"
 cd "$WARDEN_ROOT" || exit 1
-exec uv run python -m warden "$@"
+
+# Resolve uv binary — may not be in PATH after fresh install
+UV_BIN="uv"
+if ! command -v uv &>/dev/null; then
+    if [ -x "$HOME/.local/bin/uv" ]; then
+        UV_BIN="$HOME/.local/bin/uv"
+    elif [ -x "$HOME/.cargo/bin/uv" ]; then
+        UV_BIN="$HOME/.cargo/bin/uv"
+    else
+        echo "Error: uv not found. Install it with: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+        exit 1
+    fi
+fi
+exec "$UV_BIN" run python -m warden "$@"

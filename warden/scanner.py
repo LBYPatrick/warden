@@ -77,7 +77,17 @@ def scan_mas_apps() -> list[str]:
 
 
 def scan_apt_packages() -> list[str]:
-    """List installed apt packages."""
+    """List user-installed apt packages (excludes auto-installed dependencies).
+
+    Uses 'apt-mark showmanual' to get only explicitly installed packages,
+    falling back to 'dpkg --get-selections' if apt-mark is unavailable.
+    """
+    # Prefer apt-mark showmanual — returns only user-requested packages
+    ok, output = _run(["apt-mark", "showmanual"], timeout=60)
+    if ok and output.strip():
+        return sorted(line.strip() for line in output.splitlines() if line.strip())
+
+    # Fallback: dpkg --get-selections (includes dependencies)
     ok, output = _run(["dpkg", "--get-selections"], timeout=60)
     if not ok:
         return []
@@ -88,6 +98,36 @@ def scan_apt_packages() -> list[str]:
             name = parts[0].split(":")[0]
             packages.append(name)
     return sorted(packages)
+
+
+def scan_apt_sources() -> list[tuple[str, bytes]]:
+    """Collect apt source files for backup.
+
+    Returns a list of (archive_path, content) tuples for:
+      - /etc/apt/sources.list
+      - /etc/apt/sources.list.d/*.list
+      - /etc/apt/sources.list.d/*.sources
+    """
+    files: list[tuple[str, bytes]] = []
+    sources_list = Path("/etc/apt/sources.list")
+    if sources_list.is_file():
+        try:
+            files.append(("apt-sources/sources.list", sources_list.read_bytes()))
+        except PermissionError:
+            pass
+
+    sources_d = Path("/etc/apt/sources.list.d")
+    if sources_d.is_dir():
+        for f in sorted(sources_d.iterdir()):
+            if f.is_file() and f.suffix in (".list", ".sources"):
+                try:
+                    files.append(
+                        (f"apt-sources/sources.list.d/{f.name}", f.read_bytes())
+                    )
+                except PermissionError:
+                    pass
+
+    return files
 
 
 # ---------------------------------------------------------------------------

@@ -110,7 +110,12 @@ Bump in **all three** locations:
 - No runtime deps beyond json5 + rich — scanning/installing via subprocess
 - Cross-platform paths via `Path.home()`, never hardcoded
 - Backup/restore use `-m` flag: `git`, `ssh`, `pkg` (comma-delimited) or `all`; archive marker stores modules list
+- Restore without `-m` auto-detects modules from archive marker
 - Backup auto-scans packages when `pkg` module included; `--skip-scan` disables this
+- APT scanning uses `apt-mark showmanual` for user-installed packages only (falls back to dpkg)
+- APT sources (`/etc/apt/sources.list`, `sources.list.d/`) are backed up/restored with `pkg` module on Linux
+- APT install uses `apt-cache pkgnames` to filter unavailable packages before bulk install
+- `bin/warden` resolves uv from `~/.local/bin` or `~/.cargo/bin` if not in PATH
 - Mole integration (`warden mole`) is macOS-only — hidden from CLI on Linux, guarded at runtime
 - `warden install` validates manager against current OS platform (unless `--any`)
 - Argparse help colorized via `_ColorHelpFormatter` post-processing with ANSI regexes
