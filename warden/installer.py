@@ -143,6 +143,85 @@ def _install_packages_generic(
 # ---------------------------------------------------------------------------
 
 
+def _run_live(
+    cmd: list[str],
+    *,
+    timeout: int = 1200,
+    extra_env: dict[str, str] | None = None,
+) -> bool:
+    """Run a command with stdout/stderr streamed to the terminal. Returns success."""
+    env = None
+    if extra_env:
+        env = {**os.environ, **extra_env}
+    try:
+        result = subprocess.run(cmd, timeout=timeout, env=env)
+        return result.returncode == 0
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+
+
+def _install_brew_bulk(
+    wanted: list[str],
+    *,
+    label: str,
+    scan_fn: callable,
+    install_cmd: list[str],
+    force: bool = False,
+    dry_run: bool = False,
+    extra_env: dict[str, str] | None = None,
+) -> tuple[int, int, list[str]]:
+    """Install Homebrew packages in bulk with live output.
+
+    Sends all packages to brew in a single command for speed, streaming
+    output to the terminal.  If that fails (e.g. one bad formula), retries
+    each package individually.
+    """
+    if not wanted:
+        return 0, 0, []
+
+    if not shutil.which("brew"):
+        display.warn(f"{label}: brew not found, skipping")
+        return 0, len(wanted), []
+
+    installed_set = set(scan_fn()) if not force else set()
+    to_install = [p for p in wanted if p not in installed_set]
+    skipped = len(wanted) - len(to_install)
+
+    if not to_install:
+        return 0, skipped, []
+
+    if dry_run:
+        for p in to_install:
+            display.info(f"Would install {label}: {p}")
+        return 0, skipped, []
+
+    # Bulk install with live output
+    display.info(f"Installing {len(to_install)} {label}(s)...")
+    print()
+    ok = _run_live([*install_cmd, *to_install], timeout=1200, extra_env=extra_env)
+    print()
+    if ok:
+        display.success(f"Installed {len(to_install)} {label}(s)")
+        return len(to_install), skipped, []
+
+    display.warn("Bulk install failed, retrying individually...")
+
+    # Fallback: one at a time with live output
+    installed = 0
+    failed: list[str] = []
+    for pkg in to_install:
+        display.info(f"Installing {pkg}...")
+        ok = _run_live([*install_cmd, pkg], timeout=600, extra_env=extra_env)
+        if ok:
+            display.success(f"Installed {pkg}")
+            installed += 1
+        else:
+            display.error(f"Failed to install {pkg}")
+            failed.append(pkg)
+
+    return installed, skipped, failed
+
+
 def install_brew_formulae(
     wanted: list[str],
     *,
@@ -150,11 +229,10 @@ def install_brew_formulae(
     dry_run: bool = False,
     use_cn: bool = False,
 ) -> tuple[int, int, list[str]]:
-    """Install Homebrew formulae."""
-    return _install_packages_generic(
+    """Install Homebrew formulae in bulk."""
+    return _install_brew_bulk(
         wanted,
         label="brew formula",
-        binary="brew",
         scan_fn=scan_brew_formulae,
         install_cmd=["brew", "install"],
         force=force,
@@ -170,11 +248,10 @@ def install_brew_casks(
     dry_run: bool = False,
     use_cn: bool = False,
 ) -> tuple[int, int, list[str]]:
-    """Install Homebrew casks."""
-    return _install_packages_generic(
+    """Install Homebrew casks in bulk."""
+    return _install_brew_bulk(
         wanted,
         label="brew cask",
-        binary="brew",
         scan_fn=scan_brew_casks,
         install_cmd=["brew", "install", "--cask"],
         force=force,
