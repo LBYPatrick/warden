@@ -101,6 +101,16 @@ esac
 # Step 1: Dependencies
 echo "${BOLD}[1/5] Dependencies${NC}"
 
+# Auto-install Rosetta 2 on Apple Silicon
+if [[ "$(uname -s)" == "Darwin" ]] && [[ "$(uname -m)" == "arm64" ]]; then
+    if ! /usr/bin/pgrep -q oahd 2>/dev/null; then
+        run_with_progress "Installing Rosetta 2" "$STATUS_DIR/rosetta.log" \
+            /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+    else
+        echo "  ${GREEN}✓${NC} Rosetta 2 already installed"
+    fi
+fi
+
 # Auto-install Homebrew on macOS
 if [[ "$(uname -s)" == "Darwin" ]] && ! command -v brew &>/dev/null; then
     if $USE_CN; then

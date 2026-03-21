@@ -34,6 +34,17 @@ echo "${BOLD}     Warden Remote Installation${NC}"
 echo "${BOLD}===========================================${NC}"
 echo ""
 
+# On Apple Silicon, install Rosetta 2 silently
+if [[ "$(uname -s)" == "Darwin" ]] && [[ "$(uname -m)" == "arm64" ]]; then
+    if ! /usr/bin/pgrep -q oahd 2>/dev/null; then
+        echo "  ${CYAN}▶${NC} Installing Rosetta 2..."
+        /usr/sbin/softwareupdate --install-rosetta --agree-to-license 2>/dev/null
+        echo "  ${GREEN}✓${NC} Rosetta 2 installed"
+    else
+        echo "  ${GREEN}✓${NC} Rosetta 2 already installed"
+    fi
+fi
+
 # On macOS, ensure Xcode Command Line Tools are installed (provides git + make)
 if [[ "$(uname -s)" == "Darwin" ]]; then
     if ! xcode-select -p &>/dev/null; then
