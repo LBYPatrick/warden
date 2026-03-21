@@ -430,6 +430,70 @@ _PKG_MANAGERS: list[tuple[str, str, str, callable, str, list[str]]] = [
 
 
 # ---------------------------------------------------------------------------
+# Homebrew dependency tree
+# ---------------------------------------------------------------------------
+
+
+def scan_brew_dep_tree() -> dict[str, Any]:
+    """Build a JSON dependency DAG for all installed Homebrew formulae and casks.
+
+    Uses ``brew deps --installed --for-each`` to get per-formula dependency
+    lists and ``brew leaves`` for top-level formulae.
+
+    Returns a one-direction DAG: each node lists only its dependencies
+    (not reverse dependents), suitable for direct JSON serialization.
+    """
+    if not shutil.which("brew"):
+        return {}
+
+    # Direct deps per formula  ── "name: dep1 dep2 …"
+    ok, raw_deps = _run(["brew", "deps", "--installed", "--for-each"], timeout=60)
+    if not ok:
+        return {}
+
+    dep_map: dict[str, list[str]] = {}
+    for line in raw_deps.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split(":")
+        if len(parts) < 2:
+            continue
+        name = parts[0].strip()
+        deps = sorted(d.strip() for d in parts[1].split() if d.strip())
+        dep_map[name] = deps
+
+    # Leaves (top-level, not a dependency of anything else)
+    ok, raw_leaves = _run(["brew", "leaves"], timeout=30)
+    leaves = set(_lines(raw_leaves)) if ok else set()
+
+    # Casks
+    casks = scan_brew_casks()
+
+    # Assemble per-formula entries — dependencies only, no reverse dependents
+    formulae: dict[str, dict[str, Any]] = {}
+    for name, deps in sorted(dep_map.items()):
+        formulae[name] = {
+            "dependencies": deps,
+            "is_leaf": name in leaves,
+        }
+
+    total_formulae = len(formulae)
+    dep_only = sum(1 for f in formulae.values() if not f["is_leaf"])
+
+    return {
+        "formulae": formulae,
+        "casks": casks,
+        "leaves": sorted(leaves & set(dep_map)),
+        "summary": {
+            "total_formulae": total_formulae,
+            "total_casks": len(casks),
+            "leaves": total_formulae - dep_only,
+            "dependencies_only": dep_only,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
 # Full system scan
 # ---------------------------------------------------------------------------
 

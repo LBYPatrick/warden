@@ -15,6 +15,7 @@ from warden import display  # noqa: E402
 from warden.backup import backup, parse_modules, restore  # noqa: E402
 from warden.cli import (  # noqa: E402
     cmd_apply,
+    cmd_deps,
     cmd_install,
     cmd_install_list,
     cmd_list,
@@ -181,6 +182,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_install.add_argument("--save", action="store_true", default=False)
     p_install.add_argument("--any", action="store_true", default=False)
 
+    # deps (macOS only — Homebrew dependency tree)
+    if is_macos():
+        p_deps = pkg_sub.add_parser(
+            "deps",
+            help="show Homebrew dependency tree as JSON",
+            description="Produce a JSON dependency tree of all installed "
+            "Homebrew formulae and casks. Shows dependencies, reverse "
+            "dependents, leaf status, and a summary.",
+        )
+        p_deps.add_argument(
+            "-o",
+            "--output",
+            metavar="FILE",
+            default=None,
+            help="write JSON to file instead of stdout",
+        )
+
     # ── warden backup ─────────────────────────────────────────
     p_backup = sub.add_parser(
         "backup",
@@ -324,6 +342,10 @@ def _print_main_help() -> None:
     _console.print(
         "  [cyan]pkg install[/cyan] [dim]MGR:PKG[/dim]    Install via any manager"
     )
+    if is_macos():
+        _console.print(
+            "  [cyan]pkg deps[/cyan]    [dim][-o FILE][/dim]   Brew dependency tree (JSON)"
+        )
     _console.print()
     _console.print("[bold]Backup:[/bold]")
     _console.print(
@@ -418,6 +440,8 @@ def main() -> None:
                             dry_run=dry,
                             use_cn=cn,
                         )
+                case "deps":
+                    cmd_deps(output=getattr(args, "output", None))
 
         # ── backup ────────────────────────────────────────
         case "backup":

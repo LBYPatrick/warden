@@ -668,6 +668,42 @@ def _save_to_config(config_path: Path, entries: dict[str, Any]) -> None:
     config_path.write_text(serialize_config(config), encoding="utf-8")
 
 
+def cmd_deps(*, output: str | None = None) -> None:
+    """Produce a JSON dependency tree for installed Homebrew formulae."""
+    import json
+
+    from warden.scanner import scan_brew_dep_tree
+
+    # When writing to a file, show progress chrome; when piping to stdout, be quiet.
+    if output is not None:
+        display.banner("Brew Dependency Tree")
+    start = time.monotonic()
+
+    tree = scan_brew_dep_tree()
+    if not tree:
+        display.error("Homebrew not found or no formulae installed")
+        sys.exit(1)
+
+    json_str = json.dumps(tree, indent=2)
+
+    if output:
+        out_path = Path(output).expanduser()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json_str + "\n", encoding="utf-8")
+        elapsed = time.monotonic() - start
+        summary = tree.get("summary", {})
+        display.success_timed(f"Written to {out_path}", elapsed)
+        display.kv("Formulae", str(summary.get("total_formulae", 0)))
+        display.kv("Casks", str(summary.get("total_casks", 0)))
+        display.kv(
+            "Leaves",
+            f"{summary.get('leaves', 0)} top-level, "
+            f"{summary.get('dependencies_only', 0)} deps-only",
+        )
+    else:
+        print(json_str)
+
+
 def cmd_update(
     *, branch: str | None = None, dry_run: bool = False, use_cn: bool = False
 ) -> None:

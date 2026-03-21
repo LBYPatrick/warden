@@ -99,7 +99,26 @@ case "${WARDEN_USE_CN:-}" in
 esac
 
 # Step 1: Dependencies
-echo "${BOLD}[1/4] Dependencies${NC}"
+echo "${BOLD}[1/5] Dependencies${NC}"
+
+# Auto-install Homebrew on macOS
+if [[ "$(uname -s)" == "Darwin" ]] && ! command -v brew &>/dev/null; then
+    if $USE_CN; then
+        run_with_progress "Installing Homebrew (CN mirror)" "$STATUS_DIR/brew.log" \
+            bash -c 'export HOMEBREW_BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git" && export HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git" && /bin/bash -c "$(curl -fsSL https://ghp.ci/https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    else
+        run_with_progress "Installing Homebrew" "$STATUS_DIR/brew.log" \
+            bash -c 'NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    fi
+    # Add brew to PATH for the rest of this script
+    if [ -x /opt/homebrew/bin/brew ]; then
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    elif [ -x /usr/local/bin/brew ]; then
+        eval "$(/usr/local/bin/brew shellenv)"
+    fi
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "  ${GREEN}✓${NC} Homebrew already installed"
+fi
 
 if ! command -v uv &>/dev/null; then
     if $USE_CN; then
@@ -125,37 +144,31 @@ run_with_progress "Syncing Python dependencies" "$STATUS_DIR/sync.log" \
 echo ""
 
 # Step 2: Binary
-echo "${BOLD}[2/4] Binary${NC}"
+echo "${BOLD}[2/5] Binary${NC}"
 
 chmod +x "$PROJECT_ROOT/bin/warden"
 echo "  ${GREEN}✓${NC} bin/warden marked executable"
 
-if [ -w /usr/local/bin ] || [ "$(id -u)" -eq 0 ]; then
-    ln -sf "$PROJECT_ROOT/bin/warden" /usr/local/bin/warden
-    echo "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden"
-else
-    sudo ln -sf "$PROJECT_ROOT/bin/warden" /usr/local/bin/warden
-    echo "  ${GREEN}✓${NC} Symlinked to /usr/local/bin/warden (via sudo)"
+BIN_DIR="${HOME}/.local/bin"
+mkdir -p "$BIN_DIR"
+ln -sf "$PROJECT_ROOT/bin/warden" "$BIN_DIR/warden"
+echo "  ${GREEN}✓${NC} Symlinked to $BIN_DIR/warden"
+
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    echo "  ${YELLOW}⚠${NC} $BIN_DIR is not in your PATH. Add it to your shell profile:"
+    echo "    ${CYAN}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
 fi
 echo ""
 
 # Step 3: Man page
 echo "${BOLD}[3/5] Man page${NC}"
 
-MAN_DIR="/usr/local/share/man/man1"
+MAN_DIR="${HOME}/.local/share/man/man1"
 MAN_SRC="$PROJECT_ROOT/man/warden.1"
 if [ -f "$MAN_SRC" ]; then
-    if [ -w "$MAN_DIR" ] || [ "$(id -u)" -eq 0 ]; then
-        mkdir -p "$MAN_DIR"
-        cp "$MAN_SRC" "$MAN_DIR/warden.1"
-        echo "  ${GREEN}✓${NC} Man page installed to $MAN_DIR/warden.1"
-    elif command -v sudo &>/dev/null; then
-        sudo mkdir -p "$MAN_DIR"
-        sudo cp "$MAN_SRC" "$MAN_DIR/warden.1"
-        echo "  ${GREEN}✓${NC} Man page installed to $MAN_DIR/warden.1 (via sudo)"
-    else
-        echo "  ${YELLOW}⊘${NC} Cannot write to $MAN_DIR — skipping man page"
-    fi
+    mkdir -p "$MAN_DIR"
+    cp "$MAN_SRC" "$MAN_DIR/warden.1"
+    echo "  ${GREEN}✓${NC} Man page installed to $MAN_DIR/warden.1"
 else
     echo "  ${YELLOW}⊘${NC} Man page source not found — skipping"
 fi

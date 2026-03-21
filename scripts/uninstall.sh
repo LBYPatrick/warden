@@ -22,16 +22,27 @@ echo -e "${BOLD}         Warden Uninstall${NC}"
 echo -e "${BOLD}===========================================${NC}"
 echo ""
 
-# Remove symlink
-if [ -L /usr/local/bin/warden ]; then
-    if [ -w /usr/local/bin ] || [ "$(id -u)" -eq 0 ]; then
-        rm -f /usr/local/bin/warden
+# Remove symlink — check both new (~/.local/bin) and legacy (/usr/local/bin) locations
+BIN_DIR="${HOME}/.local/bin"
+LEGACY_BIN_DIR="/usr/local/bin"
+_removed_bin=false
+
+if [ -L "$BIN_DIR/warden" ]; then
+    rm -f "$BIN_DIR/warden"
+    echo -e "  ${GREEN}✓${NC} Removed $BIN_DIR/warden"
+    _removed_bin=true
+fi
+if [ -L "$LEGACY_BIN_DIR/warden" ]; then
+    if [ -w "$LEGACY_BIN_DIR" ] || [ "$(id -u)" -eq 0 ]; then
+        rm -f "$LEGACY_BIN_DIR/warden"
     else
-        sudo rm -f /usr/local/bin/warden
+        sudo rm -f "$LEGACY_BIN_DIR/warden"
     fi
-    echo -e "  ${GREEN}✓${NC} Removed /usr/local/bin/warden"
-else
-    echo -e "  ${YELLOW}⊘${NC} /usr/local/bin/warden not found"
+    echo -e "  ${GREEN}✓${NC} Removed $LEGACY_BIN_DIR/warden (legacy)"
+    _removed_bin=true
+fi
+if ! $_removed_bin; then
+    echo -e "  ${YELLOW}⊘${NC} No warden symlink found"
 fi
 
 # Remove venv
@@ -44,15 +55,21 @@ fi
 rm -rf "$PROJECT_ROOT/__pycache__" "$PROJECT_ROOT/.ruff_cache" "$PROJECT_ROOT/warden/__pycache__"
 echo -e "  ${GREEN}✓${NC} Removed caches"
 
-# Remove man page
-MAN_PAGE="/usr/local/share/man/man1/warden.1"
+# Remove man page — check both new and legacy locations
+MAN_PAGE="${HOME}/.local/share/man/man1/warden.1"
+LEGACY_MAN_PAGE="/usr/local/share/man/man1/warden.1"
+
 if [ -f "$MAN_PAGE" ]; then
-    if [ -w "$(dirname "$MAN_PAGE")" ] || [ "$(id -u)" -eq 0 ]; then
-        rm -f "$MAN_PAGE"
-    else
-        sudo rm -f "$MAN_PAGE"
-    fi
+    rm -f "$MAN_PAGE"
     echo -e "  ${GREEN}✓${NC} Removed man page"
+fi
+if [ -f "$LEGACY_MAN_PAGE" ]; then
+    if [ -w "$(dirname "$LEGACY_MAN_PAGE")" ] || [ "$(id -u)" -eq 0 ]; then
+        rm -f "$LEGACY_MAN_PAGE"
+    else
+        sudo rm -f "$LEGACY_MAN_PAGE"
+    fi
+    echo -e "  ${GREEN}✓${NC} Removed legacy man page"
 fi
 
 # Remove completions
