@@ -34,6 +34,22 @@ echo "${BOLD}     Warden Remote Installation${NC}"
 echo "${BOLD}===========================================${NC}"
 echo ""
 
+# On macOS, ensure Xcode Command Line Tools are installed (provides git + make)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    if ! xcode-select -p &>/dev/null; then
+        echo "  ${CYAN}▶${NC} Installing Xcode Command Line Tools (provides git, make)..."
+        echo "  ${DIM}A system dialog may appear — click Install and wait for it to finish.${NC}"
+        xcode-select --install 2>/dev/null || true
+        # Wait for the installation to complete
+        until xcode-select -p &>/dev/null; do
+            sleep 5
+        done
+        echo "  ${GREEN}✓${NC} Xcode Command Line Tools installed"
+    else
+        echo "  ${GREEN}✓${NC} Xcode Command Line Tools already installed"
+    fi
+fi
+
 # Check prerequisites
 for cmd in git make; do
     if ! command -v "$cmd" &>/dev/null; then
