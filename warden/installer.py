@@ -276,8 +276,21 @@ def install_mas_apps(
         return 0, 0, []
 
     if not shutil.which("mas"):
-        display.warn("mas not found, skipping Mac App Store apps")
-        return 0, len(wanted), []
+        if not shutil.which("brew"):
+            display.warn(
+                "mas not found and brew unavailable, skipping Mac App Store apps"
+            )
+            return 0, len(wanted), []
+        if dry_run:
+            display.info("Would install mas via: brew install mas")
+        else:
+            display.info("mas not found, installing via Homebrew...")
+            ok, output = _run(["brew", "install", "mas"], timeout=300)
+            if not ok:
+                last_line = output.splitlines()[-1] if output else "unknown error"
+                display.error(f"Failed to install mas: {last_line}")
+                return 0, len(wanted), []
+            display.success("Installed mas")
 
     # Build set of installed IDs
     installed_ids = set()
