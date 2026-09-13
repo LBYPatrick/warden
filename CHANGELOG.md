@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-09-13
+
 ### Added
 
 - Add a native Go CLI and an Ashley-inspired interactive dashboard for identities, packages, archives, and maintenance.

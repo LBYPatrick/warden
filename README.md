@@ -2,7 +2,7 @@
 <p align="center"><strong>Describe the system you live in</strong></p>
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go" />
-  <img src="https://img.shields.io/badge/version-1.1.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-LGPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
 </p>
@@ -21,16 +21,16 @@ Pin a specific published version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh \
-  | bash -s -- --version X.Y.Z
+  | bash -s -- --version 2.0.0
 ```
 
-Replace `X.Y.Z` with a release containing the Go binary assets. The installer supports macOS and Linux on ARM64 and x86-64, verifies SHA-256 and the executable's version, and atomically installs to `~/.local/bin/warden`. It also installs the man page and Bash/Zsh completions. Target computers need Bash, curl, tar, and a SHA-256 utility; they do not need Go, Python, uv, a checkout, or a virtual environment.
+Version 2.0.0 is the first native Go release. The installer supports macOS and Linux on ARM64 and x86-64, verifies SHA-256 and the executable's version, and atomically installs to `~/.local/bin/warden`. It also installs the man page and Bash/Zsh completions. Target computers need Bash, curl, tar, and a SHA-256 utility; they do not need Go, Python, uv, a checkout, or a virtual environment.
 
 Use `--install-dir DIR`, `WARDEN_INSTALL_DIR`, or `WARDEN_VERSION` to customize installation. Ensure `~/.local/bin` is on `PATH`.
 
 **Migration from Python:** existing configs and archives remain readable. Install the binary, then use `command -v warden` to check which launcher your shell resolves. If an older `/usr/local/bin/warden` symlink takes precedence, remove that old symlink or put `~/.local/bin` first in `PATH`. Your old checkout/virtual environment is no longer required. Keep `~/.warden/warden.jsonc` and `~/.warden/keys`.
 
-The Go changes are unreleased until a new version tag publishes the binary assets. For a checkout containing these changes, use `make install` to build and install locally.
+To build and install from a source checkout, use `make install`.
 
 ## Quick start
 
