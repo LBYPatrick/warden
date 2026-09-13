@@ -21,3 +21,4 @@ jobs:
       - run: build/warden --help
       - run: bash tests/install.sh
       - run: bash tests/cli.sh
+      - run: bash tests/migrate.sh

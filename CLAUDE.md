@@ -7,6 +7,7 @@ Native Go system descriptor and identity switcher. Use Ashley at `../ashley` as 
 - `cmd/warden`: entry point; launch TUI on an interactive bare invocation, help otherwise.
 - `internal/app`: JSON5 config, identity operations, package registry/scanning/installing, SSH merging, portable archives, binary updates, CLI output.
 - `internal/tui`: Bubble Tea dashboard, Ashley dark-blue palette, responsive navigation and details.
+- `scripts/migrate-python.sh`: migrate and back up legacy launchers without invoking their runtimes; tested by `tests/migrate.sh`.
 - `scripts/install.sh`: checksum-verified, version-pinned release installer.
 - `scripts/release/package.sh`: static archives for darwin/linux × arm64/amd64.
 - `tests/install.sh`: isolated offline installer integration test.

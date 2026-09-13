@@ -24,6 +24,7 @@ SSH merging, Mole, mirrors, and installation integrations.
 | SSH | Host/Match merging, preserved preamble, rewritten IdentityFile paths, multiple identity directives, quoted paths and inline comments | SSH and archive tests |
 | Mole | clean/optimize/analyze/status, path and JSON forwarding, native dry-run preview, interactive output, child exit status | `TestParityMoleNativePreviewAndJSON`, compiled CLI integration |
 | Mirrors | Existing Rust, Node/npm, Homebrew, PyPI, and GitHub mappings; truthy flags | `TestParityMirrorsAndFlags` |
+| Legacy migration | Launcher backups, relative/dangling symlink detection, native binary validation, PATH repair, preserved user data | `tests/migrate.sh` |
 | Shell integration | Binary installation, Bash/Zsh completions, man page, uninstall preserving config/keys | `tests/install.sh` |
 
 ## Intentional migration changes and corrections
