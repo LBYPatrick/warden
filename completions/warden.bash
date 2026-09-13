@@ -5,9 +5,9 @@ _warden_completions() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="id pkg backup restore mole update"
+    local commands="id pkg backup restore mole update tui"
     local id_commands="switch list show"
-    local pkg_commands="scan apply install"
+    local pkg_commands="scan apply install deps"
     local mole_commands="clean optimize analyze status"
 
     case "${cword}" in
@@ -60,7 +60,7 @@ _warden_completions() {
                     switch | show)
                         # Try to get targets from warden id list
                         local targets
-                        targets=$(warden id list 2>/dev/null | grep -oP '(?<=◉ )\S+' | sed 's/\x1b\[[0-9;]*m//g')
+                        targets=$(warden id list --names 2>/dev/null)
                         if [[ -n "${targets}" ]]; then
                             COMPREPLY=($(compgen -W "${targets}" -- "${cur}"))
                         fi

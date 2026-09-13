@@ -1,0 +1,83 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: check
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(cat VERSION)"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+\.[0-9]+)?$ ]]
+          test "$TAG" = "v$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+  gate:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+  package:
+    needs: [version, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [darwin, linux]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: bash scripts/release/package.sh '${{ matrix.platform }}' '${{ matrix.arch }}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: warden-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: warden-*
+          path: dist
+          merge-multiple: true
+      - name: Publish complete verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          for platform in darwin linux; do
+            for arch in arm64 amd64; do
+              archive="warden-$VERSION-$platform-$arch.tar.gz"
+              test -f "dist/$archive"
+              test -f "dist/$archive.sha256"
+              (cd dist && sha256sum -c "$archive.sha256")
+            done
+          done
+          prerelease=false
+          if [[ "$VERSION" == *-* ]]; then prerelease=true; fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag --draft --title "Warden $VERSION" --generate-notes --prerelease="$prerelease"
+          fi
+          gh release upload "$TAG" dist/*.tar.gz dist/*.sha256 --clobber
+          gh release edit "$TAG" --draft=false --prerelease="$prerelease"

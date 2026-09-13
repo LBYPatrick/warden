@@ -4,7 +4,7 @@
 
 _warden_targets() {
     local targets
-    targets=(${(f)"$(warden id list 2>/dev/null | grep -oP '(?<=◉ )\S+' | sed 's/\x1b\[[0-9;]*m//g')"})
+    targets=(${(f)"$(warden id list --names 2>/dev/null)"})
     if [[ ${#targets} -gt 0 ]]; then
         _describe 'target' targets
     fi
@@ -33,7 +33,8 @@ _warden() {
         'backup:backup modules (default: all)'
         'restore:restore modules from backup archive'
         'mole:system cleanup and optimization (macOS)'
-        'update:self-update warden from git'
+        'update:install a binary release'
+        'tui:interactive dashboard'
     )
 
     _arguments -C \
@@ -85,6 +86,7 @@ _warden() {
                     pkg_commands=(
                         'scan:scan system and update config'
                         'apply:install packages from config'
+                        'deps:Homebrew dependency graph'
                         'install:install packages via any manager'
                     )
                     _arguments -C \
@@ -161,7 +163,7 @@ _warden() {
                     ;;
                 update)
                     _arguments \
-                        '1::branch:' \
+                        '1::release version:' \
                         '--help[show help]'
                     ;;
             esac

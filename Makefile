@@ -1,42 +1,26 @@
-.PHONY: help install uninstall clean build test format tidy
-SHELL := /bin/bash
-VERSION := $(shell cat VERSION 2>/dev/null | tr -d '\n' || echo "1.0.0")
-
-# Color support — respect WARDEN_NO_COLOR and NO_COLOR
-ifdef WARDEN_NO_COLOR
-  FMT = printf "  %-15s %s\n", $$1, $$2
-  OK  = echo "  $$1"
-else ifdef NO_COLOR
-  FMT = printf "  %-15s %s\n", $$1, $$2
-  OK  = echo "  $$1"
-else
-  FMT = printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2
-  OK  = echo "  \033[0;32m✓\033[0m $$1"
-endif
-
-help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {$(FMT)}'
-
-install: ## Install warden and symlink to /usr/local/bin
-	@bash scripts/install.sh
-
-uninstall: ## Remove warden symlink and caches
-	@bash scripts/uninstall.sh
-
-clean: ## Remove .venv, caches, and build artifacts
-	@rm -rf .venv __pycache__ .ruff_cache warden/__pycache__ dist build *.egg-info
-	@echo "  Cleaned"
-
-build: ## Verify the project runs
-	@uv run python -m warden --help > /dev/null
-	@echo "  Build OK"
-
-test: ## Run tests
-	@uv run python -m pytest tests/ -v
-
-format: ## Run formatter and linter
-	@bash tidy.sh
-
-tidy: format ## Alias for format
-
-setup: install ## Alias for install
+VERSION := $(shell cat VERSION)
+.PHONY: build format test install uninstall clean release
+build:
+	go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o build/warden ./cmd/warden
+format:
+	bash tidy.sh
+test:
+	go test -race ./...
+	go vet ./...
+install: build
+	mkdir -p "$(HOME)/.local/bin"
+	install -m 755 build/warden "$(HOME)/.local/bin/.warden-new"
+	mv -f "$(HOME)/.local/bin/.warden-new" "$(HOME)/.local/bin/warden"
+	mkdir -p "$(HOME)/.local/share/man/man1" "$(HOME)/.local/share/bash-completion/completions" "$(HOME)/.zsh/completions"
+	cp man/warden.1 "$(HOME)/.local/share/man/man1/warden.1"
+	cp completions/warden.bash "$(HOME)/.local/share/bash-completion/completions/warden"
+	cp completions/warden.zsh "$(HOME)/.zsh/completions/_warden"
+uninstall:
+	bash scripts/uninstall.sh
+clean:
+	rm -rf build dist
+release:
+	bash scripts/release/package.sh darwin arm64
+	bash scripts/release/package.sh darwin amd64
+	bash scripts/release/package.sh linux arm64
+	bash scripts/release/package.sh linux amd64

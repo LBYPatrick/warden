@@ -3,14 +3,30 @@
 ## [Unreleased]
 
 ### Added
+
+- Add a native Go CLI and an Ashley-inspired interactive dashboard for identities, packages, archives, and maintenance.
+- Add checksum-verified binary installation and updates, explicit release version selection, and macOS/Linux ARM64/x86-64 release artifacts.
+- Add machine-readable identity listings, archive validation, and Go regression tests.
 - Backup and restore apt sources (`/etc/apt/sources.list`, `sources.list.d/`) with the `pkg` module on Linux
 - Restore auto-detects available modules from archive marker when `-m` is not specified
 
 ### Changed
+
+- Replace the Python runtime and source-based installation with native Go binaries.
+- Refresh CLI output, completions, and installation documentation.
+- Replace branch-based self-update with binary release selection.
 - APT scanning now uses `apt-mark showmanual` to capture only user-installed packages (falls back to `dpkg --get-selections`)
 - APT install filters packages through `apt-cache pkgnames` to skip unavailable ones before bulk install
-- `bin/warden` resolves uv from `~/.local/bin` or `~/.cargo/bin` when not in PATH
-- `install.sh` adds uv install paths to PATH immediately after fresh install
+
+### Fixed
+
+- Restore Homebrew bulk/live installation and retries, APT refresh/fallback behavior, contextual help, derived identity details, and Mole native previews.
+- Preserve pnpm inventory, Xcode toolchain detection, and Linux formula scanning when cask inventory is unsupported.
+- Keep successful package saves when a later manager fails; avoid requiring config for standalone installation.
+- Make `--include-missing` retain absent-key SSH hosts without attempting to archive nonexistent files.
+- Deduplicate key pairs across Git and SSH backups and reuse matching local keys during restore, including legacy archive duplicates.
+- Preserve different local keys on filename collisions and honor selected restore modules and explicit config paths.
+- Keep dry runs free of file writes and preserve malformed existing configurations.
 
 ## [1.1.0] - 2026-03-16
 

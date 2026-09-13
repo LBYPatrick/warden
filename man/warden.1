@@ -1,5 +1,5 @@
 .\" Warden man page
-.TH WARDEN 1 "2026-03-16" "1.0.0" "Warden Manual"
+.TH WARDEN 1 "2026-09-13" "1.1.0" "Warden Manual"
 .SH NAME
 warden \- describe the system you live in
 .SH SYNOPSIS
@@ -33,6 +33,11 @@ Use
 .B \-c PATH
 to override with an explicit config file.
 .SH COMMANDS
+.SS "Interactive dashboard"
+.B warden tui
+opens an Ashley-style dashboard. Bare warden opens it when attached to a terminal.
+Use Tab or arrow keys to navigate, Enter to review actions, and q to quit.
+Use / to filter, s to scan packages, and a to apply them.
 .SS "Identity (warden id)"
 .TP
 .B id switch \fItarget\fR
@@ -135,9 +140,9 @@ See
 for full documentation.
 .SS "System"
 .TP
-.B update \fR[\fIbranch\fR]
-Self-update warden by pulling latest from git and reinstalling. Defaults to the
-current branch.
+.B update \fR[\fIVERSION\fR]
+Download a checksum-verified binary release and atomically replace the executable.
+Defaults to the latest release; optionally select a published X.Y.Z version.
 .SH GLOBAL OPTIONS
 .TP
 .B \-c \fIPATH\fR
@@ -170,7 +175,7 @@ Directory where backup-restored signing keys are stored.
 SSH config file that the \fBssh\fR module operates on during backup and restore.
 .SH SUPPORTED PACKAGE MANAGERS
 brew, cask, mas, apt, dnf, pacman, apk, snap, flatpak, cargo, npm, pnpm, pipx,
-and developer tools (rustup, node, pnpm, go, etc.).
+and developer tools (rustup, node, pnpm, conda, flutter, gcloud, aws, wrangler, android-tools, xcode).
 .SH EXIT STATUS
 .TP
 .B 0
