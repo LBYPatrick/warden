@@ -75,7 +75,7 @@ func (m model) items() []string {
 		}
 	}
 	if m.tab == 5 {
-		return append([]string{"Dark mode", "Light mode"}, presets...)
+		return append([]string{"Clear mode", "Dark mode", "Light mode"}, presets...)
 	}
 	if m.filter == "" {
 		return items
@@ -289,10 +289,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch m.tab {
 			case 5:
 				next := m.theme
-				if m.cursor < 2 {
-					next.Mode = []string{"dark", "light"}[m.cursor]
+				if m.cursor < len(modes) {
+					next.Mode = modes[m.cursor]
 				} else {
-					next.Preset = presets[m.cursor-2]
+					next.Preset = presets[m.cursor-len(modes)]
 				}
 				if m.app.Dry {
 					m.theme = next

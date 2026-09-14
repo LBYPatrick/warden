@@ -75,3 +75,21 @@ func (f *frame) String() string {
 	}
 	return strings.Join(rows, "\n")
 }
+
+// clearBackground also handles reverse-video cursors from child widgets and
+// ANSI backgrounds in captured output without losing their foreground colors.
+func (f *frame) clearBackground() {
+	for y := 0; y < f.height; y++ {
+		for x := 0; x < f.width; x++ {
+			c := f.cells.Cell(x, y)
+			if c == nil {
+				continue
+			}
+			c.Style.Bg = nil
+			if c.Style.Attrs&cellbuf.ReverseAttr != 0 {
+				c.Style.Attrs &^= cellbuf.ReverseAttr
+				c.Style.UlStyle = cellbuf.SingleUnderline
+			}
+		}
+	}
+}

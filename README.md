@@ -2,7 +2,7 @@
 <p align="center"><strong>Describe the system you live in</strong></p>
 <p align="center">
   <img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go" />
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version" />
+  <img src="https://img.shields.io/badge/version-2.1.0-blue" alt="Version" />
   <img src="https://img.shields.io/badge/license-LGPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
 </p>
@@ -21,7 +21,7 @@ Pin a specific published version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh \
-  | bash -s -- --version 2.0.0
+  | bash -s -- --version 2.1.0
 ```
 
 Version 2.0.0 is the first native Go release. The installer supports macOS and Linux on ARM64 and x86-64, verifies SHA-256 and the executable's version, and atomically installs to `~/.local/bin/warden`. It also installs the man page and Bash/Zsh completions. Target computers need Bash, curl, tar, and a SHA-256 utility; they do not need Go, Python, uv, a checkout, or a virtual environment.
@@ -32,7 +32,7 @@ Use `--install-dir DIR`, `WARDEN_INSTALL_DIR`, or `WARDEN_VERSION` to customize 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh \
-  | bash -s -- --version 2.0.0
+  | bash -s -- --version 2.1.0
 ```
 
 The binary installer detects legacy checkout symlinks, backs up replaced launchers under `~/.warden/migrations/python-to-go-*`, and atomically installs the native binary. It also redirects recognized Python or Go wrappers earlier on PATH, whether copied or symlinked. Protected launchers cause an error before replacement with instructions to put the install directory first on PATH. It never executes the old launcher or needs Python, uv, Go, or git.
@@ -79,7 +79,7 @@ The TUI has Overview, Identities, Packages, Archives, Maintenance, and Settings 
 
 Identity switches, package application, restores, backups, updates, and maintenance actions have a review screen. Restore accepts an archive path, including spaces. Operations show their result or error in a scrollable panel. Start with `warden --dry-run` to preview actions.
 
-Press `t` (or `6`) to choose **light/dark mode** and an accent: blue, green, purple, orange, rose, cyan, ocean, sunset, grape, or forest. Use ↑/↓ and Enter to apply a choice immediately. Preferences are saved in `~/.warden/theme.json`, independently of your portable system configuration. `NO_COLOR` and `WARDEN_NO_COLOR` suppress styling; `--dry-run` previews appearance without saving it.
+Press `t` (or `6`) to choose **Clear (default), Dark, or Light mode** and an accent: blue, green, purple, orange, rose, cyan, ocean, sunset, grape, or forest. Use ↑/↓ and Enter to apply a choice immediately. Preferences are saved in `~/.warden/theme.json`, independently of your portable system configuration. `NO_COLOR` and `WARDEN_NO_COLOR` suppress styling; `--dry-run` previews appearance without saving it.
 
 ## Configuration
 
@@ -221,3 +221,5 @@ See [the feature-parity audit](docs/feature-parity.md) for the Python baseline, 
 ## License
 
 [LGPL-3.0-or-later](LICENSE).
+
+Clear mode uses your terminal’s background and foreground, so configured transparency or blur remains visible. It does not enable terminal transparency itself. Existing saved Dark or Light preferences are preserved; choose Clear in Settings to switch.

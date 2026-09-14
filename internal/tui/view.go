@@ -11,7 +11,14 @@ import (
 type appearance struct{ base, border, title, muted, selected, panel lipgloss.Style }
 
 func (m model) appearance() appearance {
-	v := themeValues[m.theme.Mode+"-"+m.theme.Preset]
+	mode := m.theme.Mode
+	if mode == "clear" {
+		mode = "dark"
+		if !lipgloss.HasDarkBackground() {
+			mode = "light"
+		}
+	}
+	v := themeValues[mode+"-"+m.theme.Preset]
 	if v == nil {
 		v = themeValues["dark-blue"]
 	}
@@ -24,6 +31,10 @@ func (m model) appearance() appearance {
 		return appearance{base, base, base.Bold(true), base, base.Bold(true), base}
 	}
 	bg, accent := v["surface"], v["accent"]
+	if m.theme.Mode == "clear" {
+		title := base.Foreground(lipgloss.Color(accent)).Bold(true)
+		return appearance{base, base, title, base.Faint(true), title.Underline(true), base}
+	}
 	base = base.Background(lipgloss.Color(bg)).Foreground(lipgloss.Color(blendColor(contrast, bg, .87)))
 	return appearance{base, base.Foreground(lipgloss.Color(v["surface-lighten-2"])), base.Foreground(lipgloss.Color(accent)).Bold(true), base.Foreground(lipgloss.Color(blendColor(contrast, bg, .60))), base.Background(lipgloss.Color(blendColor(accent, bg, .20))).Bold(true), base.Background(lipgloss.Color(v["panel"]))}
 }
@@ -71,6 +82,9 @@ func (m model) View() string {
 	f := newFrame(w, h, a.base)
 	if w < 38 || h < 12 {
 		f.text(rect{0, 0, w, h}, "Warden · enlarge terminal (38×12) · q quit", a.muted, 0)
+		if m.theme.Mode == "clear" {
+			f.clearBackground()
+		}
 		return f.String()
 	}
 	f.fill(rect{0, 0, w, 1}, a.panel)
@@ -203,6 +217,9 @@ func (m model) View() string {
 	}
 	if m.app.NoColor {
 		return ansi.Strip(f.String())
+	}
+	if m.theme.Mode == "clear" {
+		f.clearBackground()
 	}
 	return f.String()
 }

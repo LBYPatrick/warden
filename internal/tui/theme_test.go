@@ -22,17 +22,20 @@ func TestAppearanceChoicesPersistAndRender(t *testing.T) {
 	a.Home = t.TempDir()
 	a.NoColor = false
 	m := newModel(a)
+	if m.theme.Mode != "clear" {
+		t.Fatal("default must be clear")
+	}
 	if _, err := os.Stat(themePath(a.Home)); !os.IsNotExist(err) {
 		t.Fatal("opening TUI wrote preferences")
 	}
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	m = next.(model)
-	for mode := 0; mode < 2; mode++ {
+	for mode := 0; mode < len(modes); mode++ {
 		m.cursor = mode
 		next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 		m = next.(model)
 		for i, preset := range presets {
-			m.cursor = i + 2
+			m.cursor = i + len(modes)
 			next, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 			m = next.(model)
 			if m.err != nil {
@@ -46,6 +49,9 @@ func TestAppearanceChoicesPersistAndRender(t *testing.T) {
 				for tab := range tabs {
 					m.tab = tab
 					view := m.View()
+					if m.theme.Mode == "clear" {
+						assertClearFrame(t, view, m.width, m.height)
+					}
 					if len(strings.Split(view, "\n")) != m.height {
 						t.Fatal("incorrect frame height")
 					}
@@ -100,7 +106,7 @@ func TestThemeFailuresPreserveUserData(t *testing.T) {
 	a.Home = t.TempDir()
 	m := newModel(a)
 	m.tab = 5
-	m.cursor = 1
+	m.cursor = 2
 	os.WriteFile(filepath.Join(a.Home, ".warden"), []byte("blocked directory"), 0600)
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	got := next.(model)
@@ -135,7 +141,7 @@ func TestDryRunThemePreviewDoesNotWrite(t *testing.T) {
 	a.Dry = true
 	m := newModel(a)
 	m.tab = 5
-	m.cursor = 1
+	m.cursor = 2
 	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = next.(model)
 	if m.theme.Mode != "light" || m.err != nil {

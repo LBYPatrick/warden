@@ -12,6 +12,8 @@ type theme struct {
 	Preset string `json:"preset"`
 }
 
+var modes = []string{"clear", "dark", "light"}
+
 var presets = []string{"blue", "green", "purple", "orange", "rose", "cyan", "ocean", "sunset", "grape", "forest"}
 
 func themePath(home string) string { return filepath.Join(home, ".warden", "theme.json") }
@@ -33,7 +35,7 @@ func readThemeData(home string) (map[string]json.RawMessage, error) {
 	return data, nil
 }
 func loadTheme(home string) (theme, error) {
-	t := theme{"dark", "blue"}
+	t := theme{"clear", "blue"}
 	data, err := readThemeData(home)
 	if err != nil {
 		return t, err
@@ -41,16 +43,16 @@ func loadTheme(home string) (theme, error) {
 	var mode, preset string
 	_ = json.Unmarshal(data["mode"], &mode)
 	_ = json.Unmarshal(data["preset"], &preset)
-	if mode == "dark" || mode == "light" {
+	if mode == "clear" || mode == "dark" || mode == "light" {
 		t.Mode = mode
 	}
-	if themeValues[t.Mode+"-"+preset] != nil {
+	if themeValues["dark-"+preset] != nil {
 		t.Preset = preset
 	}
 	return t, nil
 }
 func saveTheme(home string, t theme) error {
-	if themeValues[t.Mode+"-"+t.Preset] == nil {
+	if (t.Mode != "clear" && t.Mode != "dark" && t.Mode != "light") || themeValues["dark-"+t.Preset] == nil {
 		return fmt.Errorf("invalid appearance: %s/%s", t.Mode, t.Preset)
 	}
 	data, err := readThemeData(home)

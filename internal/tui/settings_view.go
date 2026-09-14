@@ -11,7 +11,7 @@ import (
 func (m model) settingsList(f *frame, r rect, a appearance) {
 	items := m.items()
 	choice := func(index, y int, category string) {
-		selected := (index == 0 && m.theme.Mode == "dark") || (index == 1 && m.theme.Mode == "light") || (index >= 2 && presets[index-2] == m.theme.Preset)
+		selected := (index < len(modes) && modes[index] == m.theme.Mode) || (index >= len(modes) && presets[index-len(modes)] == m.theme.Preset)
 		marker := "○ "
 		if selected {
 			marker = "● "
@@ -28,10 +28,10 @@ func (m model) settingsList(f *frame, r rect, a appearance) {
 		f.put(r.x, y, style.Render(text+strings.Repeat(" ", max(0, r.w-ansi.StringWidth(text)))))
 	}
 	heading := func(y int, text string) { f.put(r.x, y, a.title.Render(ansi.Truncate(text, r.w, "…"))) }
-	if r.h < 6 {
-		title, start, end := "Mode", 0, 2
-		if m.cursor >= 2 {
-			title, start, end = "Accent color", 2, len(items)
+	if r.h < 7 {
+		title, start, end := "Mode", 0, len(modes)
+		if m.cursor >= len(modes) {
+			title, start, end = "Accent color", len(modes), len(items)
 		}
 		if r.h == 1 {
 			choice(m.cursor, r.y, title+" · ")
@@ -45,12 +45,13 @@ func (m model) settingsList(f *frame, r rect, a appearance) {
 		return
 	}
 	heading(r.y, "Mode")
-	choice(0, r.y+1, "")
-	choice(1, r.y+2, "")
-	heading(r.y+4, "Accent color")
-	available := r.h - 5
-	start := max(2, m.cursor-available+1)
+	for i := range modes {
+		choice(i, r.y+1+i, "")
+	}
+	heading(r.y+5, "Accent color")
+	available := r.h - 6
+	start := max(len(modes), m.cursor-available+1)
 	for i := start; i < min(len(items), start+available); i++ {
-		choice(i, r.y+5+i-start, "")
+		choice(i, r.y+6+i-start, "")
 	}
 }
