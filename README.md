@@ -35,7 +35,7 @@ curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/migr
   | bash -s -- --version 2.0.0
 ```
 
-It detects legacy checkout symlinks, backs up replaced launchers under `~/.warden/migrations/python-to-go-*`, and atomically installs the native binary. It also redirects a writable legacy symlink earlier on PATH when it points to the same checkout. It never executes the old launcher or needs Python, uv, Go, or git.
+It detects legacy checkout symlinks, backs up replaced launchers under `~/.warden/migrations/python-to-go-*`, and atomically installs the native binary. It also redirects a writable legacy symlink earlier on PATH when it points to the same checkout, or a recognized Go development wrapper (copied or symlinked). It never executes the old launcher or needs Python, uv, Go, or git.
 
 For an offline migration, run `bash scripts/migrate-python.sh --binary /path/to/warden`. Optional `--source CHECKOUT` records an explicit legacy source directory; `--install-dir DIR` changes the destination. `--binary` and `--version` are mutually exclusive. The release-download route installs current completions and the man page; `--binary` replaces only the launcher.
 

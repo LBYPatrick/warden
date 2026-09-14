@@ -55,13 +55,31 @@ legacy_source() {
     parent="$(dirname "$resolved")/.."
     if [[ -f "$parent/warden/__main__.py" ]]; then (cd "$parent" && pwd -P); fi
 }
+# Recognize only our exact development wrapper, without executing it. A legacy
+# symlink can point into a checkout that has already been updated to Go.
+is_development_launcher() {
+    [[ -f "$1" ]] || return 1
+    cmp -s "$1" <(cat <<'WRAPPER'
+#!/bin/bash
+# Development launcher only; releases ship a native executable.
+set -euo pipefail
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec "$root/build/warden" "$@"
+WRAPPER
+    )
+}
 path_launcher="$(type -P warden || true)"
 if [[ -n "$path_launcher" ]]; then
     path_launcher="$(cd "$(dirname "$path_launcher")" && pwd -P)/$(basename "$path_launcher")"
 fi
 shadow=""
 for old in "$launcher" "$path_launcher"; do
-    [[ -n "$old" && -L "$old" ]] || continue
+    [[ -n "$old" ]] || continue
+    if [[ "$old" != "$launcher" ]] && is_development_launcher "$old"; then
+        shadow="$old"
+        continue
+    fi
+    [[ -L "$old" ]] || continue
     detected="$(legacy_source "$old")"
     if [[ -z "$source_dir" && -n "$detected" ]]; then source_dir="$detected"; fi
     if [[ "$old" != "$launcher" && -n "$detected" && "$detected" == "$source_dir" ]]; then

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Recognize copied and symlinked Go development launchers during migration, including legacy symlinks into checkouts already updated to Go.
+
 ### Added
 
 - Add an Ashley-style Python-to-Go migration helper with native binary validation, launcher backups, legacy symlink detection, and PATH repair while preserving configuration and keys.

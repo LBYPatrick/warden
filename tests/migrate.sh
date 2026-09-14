@@ -1,6 +1,8 @@
 #!/bin/bash
 # Test migration in isolated homes without executing legacy runtimes or networking.
 set -euo pipefail
+# Keep host Warden launchers out of fixture discovery.
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 root="$(cd "$(dirname "$0")/.." && pwd)"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -49,6 +51,28 @@ ln -s /nonexistent/old-warden "$broken_home/.local/bin/warden"
 env HOME="$broken_home" bash "$root/scripts/migrate-python.sh" --binary "$root/build/warden" >/dev/null
 backups=("$broken_home/.warden/migrations"/python-to-go-*)
 [[ "$(readlink "${backups[0]}/warden")" == /nonexistent/old-warden ]]
+# Updated checkouts no longer have Python files; their Go wrapper can still
+# shadow the installed binary, either copied or reached through a symlink.
+for mode in symlink copy; do
+    dev_home="$tmp/dev-$mode"
+    mkdir -p "$dev_home/checkout/bin" "$dev_home/shadow"
+    cp "$root/bin/warden" "$dev_home/checkout/bin/warden"
+    if [[ "$mode" == symlink ]]; then
+        ln -s ../checkout/bin/warden "$dev_home/shadow/warden"
+    else
+        cp "$root/bin/warden" "$dev_home/shadow/warden"
+    fi
+    env HOME="$dev_home" PATH="$dev_home/shadow:$PATH" bash "$root/scripts/migrate-python.sh" --binary "$root/build/warden" >/dev/null
+    [[ "$(readlink "$dev_home/shadow/warden")" == "$dev_home/.local/bin/warden" ]]
+    [[ "$("$dev_home/shadow/warden" --version)" == "warden $version" ]]
+    cmp "$root/bin/warden" "$dev_home/checkout/bin/warden"
+    backups=("$dev_home/.warden/migrations"/python-to-go-*)
+    if [[ "$mode" == symlink ]]; then
+        [[ "$(readlink "${backups[0]}/path-warden")" == ../checkout/bin/warden ]]
+    else
+        cmp "$root/bin/warden" "${backups[0]}/path-warden"
+    fi
+done
 # Exercise the piped bootstrap and pinned, checksum-verified download route.
 mkdir -p "$tmp/downloads" "$tmp/transport" "$tmp/payload" "$tmp/download-home/.local/bin"
 case "$(uname -s)" in Darwin) platform=darwin ;; *) platform=linux ;; esac
