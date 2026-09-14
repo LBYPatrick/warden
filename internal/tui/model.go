@@ -3,7 +3,6 @@ package tui
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"sort"
@@ -11,8 +10,6 @@ import (
 
 	"github.com/LBYPatrick/warden/internal/app"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type resultMsg struct {
@@ -26,13 +23,25 @@ type model struct {
 	filter, input, form, confirm, output string
 	busy, filtering                      bool
 	err                                  error
+	theme                                theme
+	previousTab                          int
 }
 
-var tabs = []string{"Overview", "Identities", "Packages", "Archives", "Maintenance"}
+var tabs = []string{"Overview", "Identities", "Packages", "Archives", "Maintenance", "Settings"}
 
 func newModel(a *app.App) model {
 	c, e := a.Load()
-	return model{app: a, config: c, width: 80, height: 24, err: e}
+	t, themeErr := loadTheme(a.Home)
+	if e == nil {
+		e = themeErr
+	}
+	return model{app: a, config: c, width: 80, height: 24, err: e, theme: t}
+}
+func (m *model) changeTab(next int) {
+	if next == 5 && m.tab != 5 {
+		m.previousTab = m.tab
+	}
+	m.tab = next
 }
 func (m model) Init() tea.Cmd { return nil }
 func (m model) items() []string {
@@ -64,6 +73,9 @@ func (m model) items() []string {
 		if m.app.Platform == "darwin" {
 			items = append(items, "Mole clean", "Mole optimize", "Mole analyze", "Mole status")
 		}
+	}
+	if m.tab == 5 {
+		return append([]string{"Dark mode", "Light mode"}, presets...)
 	}
 	if m.filter == "" {
 		return items
@@ -223,24 +235,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "tab", "right", "l":
-			m.tab = (m.tab + 1) % len(tabs)
+			m.changeTab((m.tab + 1) % len(tabs))
 			m.cursor = 0
 			m.filter = ""
 		case "shift+tab", "left", "h":
-			m.tab = (m.tab + len(tabs) - 1) % len(tabs)
+			m.changeTab((m.tab + len(tabs) - 1) % len(tabs))
 			m.cursor = 0
 			m.filter = ""
-		case "1", "2", "3", "4", "5":
-			m.tab = int(key[0] - '1')
+		case "1", "2", "3", "4", "5", "6":
+			m.changeTab(int(key[0] - '1'))
 			m.cursor = 0
 			m.filter = ""
 		case "up", "k":
 			m.cursor = max(0, m.cursor-1)
 		case "down", "j":
 			m.cursor = min(max(0, len(m.items())-1), m.cursor+1)
+		case "t":
+			if m.tab != 5 {
+				m.previousTab = m.tab
+			}
+			m.tab, m.cursor, m.filter = 5, 0, ""
 		case "/":
-			m.filtering = true
+			if m.tab != 5 {
+				m.filtering = true
+			}
 		case "esc":
+			if m.tab == 5 {
+				m.tab, m.cursor = m.previousTab, 0
+			}
 			m.filter = ""
 		case "r":
 			c, e := m.app.Load()
@@ -265,15 +287,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = min(m.cursor, len(items)-1)
 			item := items[m.cursor]
 			switch m.tab {
+			case 5:
+				next := m.theme
+				if m.cursor < 2 {
+					next.Mode = []string{"dark", "light"}[m.cursor]
+				} else {
+					next.Preset = presets[m.cursor-2]
+				}
+				if m.app.Dry {
+					m.theme = next
+				} else if e := saveTheme(m.app.Home, next); e != nil {
+					m.err = e
+				} else {
+					m.theme = next
+				}
 			case 0:
-				switch m.cursor {
-				case 0:
+				switch item {
+				case "Browse identities":
 					m.tab = 1
-				case 1:
+				case "Browse packages":
 					m.tab = 2
-				case 2:
+				case "Create a backup":
 					m.confirm = "backup:all"
-				case 3:
+				case "Restore an archive":
 					m.form = "restore"
 				}
 				m.cursor = 0
@@ -302,173 +338,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
-}
-func (m model) paint(s, color string, bold bool) string {
-	if m.app.NoColor {
-		return s
-	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(bold).Render(s)
-}
-func (m model) View() string {
-	w, h := max(1, m.width), max(1, m.height)
-	if w < 38 || h < 12 {
-		return ansi.Truncate("Warden · enlarge terminal (38×12) · q quit", w, "")
-	}
-	rows := make([]string, h)
-	for i := range rows {
-		rows[i] = strings.Repeat(" ", w)
-	}
-	put := func(y int, s string) {
-		if y >= 0 && y < h {
-			rows[y] = ansi.Truncate(s, w, "")
-		}
-	}
-	put(0, m.paint("  Warden v"+m.app.Version+"  /  "+tabs[m.tab], "#EDEDED", true))
-	nav := "  "
-	for i, t := range tabs {
-		label := fmt.Sprintf("%d %s", i+1, t)
-		if i == m.tab {
-			label = m.paint("["+label+"]", "#4A9EFF", true)
-		}
-		nav += label + "  "
-	}
-	if w < 85 {
-		nav = fmt.Sprintf("  ‹  %d / %d   %s  ›", m.tab+1, len(tabs), tabs[m.tab])
-	}
-	put(2, nav)
-	footer := "  ←→ Sections  ↑↓ Move  enter Open  / Filter  q Quit"
-	if m.tab == 2 {
-		footer = "  s Scan  a Apply  / Filter  r Refresh  ←→ Sections  q Quit"
-	}
-	content := []string{}
-	if m.busy {
-		content = []string{"Working…", "", "The result will appear here when the operation finishes."}
-	}
-	if m.confirm != "" {
-		content = []string{"Review action", "", m.confirm, "", "This will update the selected configuration or system state.", "Press enter to proceed, or esc to go back."}
-		if m.app.Dry {
-			content[4] = "Dry run is enabled. This previews the operation."
-		}
-		footer = "  enter Proceed  esc Cancel"
-	}
-	if m.form != "" {
-		content = []string{"Restore an archive", "", "Archive path", "> " + m.input + "▏", "", "Existing identities, SSH hosts, and packages will be merged."}
-		footer = "  enter Review  esc Cancel"
-	}
-	if m.output != "" || m.err != nil {
-		body := m.output
-		if m.err != nil {
-			body += "\nError: " + m.err.Error()
-		}
-		content = strings.Split(ansi.Wrap(body, w-6, ""), "\n")
-		offset := min(m.offset, max(0, len(content)-(h-8)))
-		content = content[offset:]
-		footer = "  ↑↓ Scroll  enter / esc Back  q Quit"
-	}
-	if len(content) > 0 {
-		put(4, m.paint("  ╭"+strings.Repeat("─", w-6)+"╮", "#3E3E3E", false))
-		for i := 0; i < h-8; i++ {
-			line := ""
-			if i < len(content) {
-				line = content[i]
-			}
-			put(5+i, "  │ "+ansi.Truncate(line, w-8, "…"))
-		}
-		put(h-3, m.paint("  ╰"+strings.Repeat("─", w-6)+"╯", "#3E3E3E", false))
-	} else {
-		items := m.items()
-		heading := tabs[m.tab]
-		if m.tab == 0 {
-			heading = "Your environment, in one place"
-		}
-		put(4, "  "+m.paint(heading, "#4A9EFF", true))
-		put(5, "  "+m.paint(m.app.ConfigPath(), "#999999", false))
-		start := max(0, m.cursor-(h-12))
-		limit := h - 11
-		for i := start; i < min(len(items), start+limit); i++ {
-			prefix := "    "
-			line := items[i]
-			if i == m.cursor {
-				prefix = "  › "
-				line = m.paint(line, "#4A9EFF", true)
-			}
-			if w >= 95 && (m.tab == 1 || m.tab == 2) {
-				line = ansi.Truncate(line, w/2-8, "…")
-			}
-			put(7+i-start, prefix+line)
-		}
-		if len(items) == 0 {
-			put(8, "  No entries. "+map[int]string{1: "Add identities to your config.", 2: "Press s to scan installed packages."}[m.tab])
-		}
-		if m.filter != "" || m.filtering {
-			put(h-3, "  Filter: "+m.filter+"▏")
-		} else if m.tab == 0 {
-			count := 0
-			for _, sec := range m.config.Packages {
-				for _, p := range sec {
-					count += len(p)
-				}
-			}
-			put(h-3, fmt.Sprintf("  %d identities   %d packages   %d tools", len(m.config.Identities), count, len(m.config.Tools)))
-		} else if m.tab == 1 && len(items) > 0 {
-			selected := items[min(m.cursor, len(items)-1)]
-			id := m.config.Identities[selected]
-			put(h-3, "  "+id["name"]+" <"+id["email"]+">")
-		}
-	}
-	if len(content) == 0 && w >= 95 && (m.tab == 0 || m.tab == 1 || m.tab == 2) {
-		x := w / 2
-		right := []string{"Selection", ""}
-		items := m.items()
-		if len(items) > 0 {
-			item := items[min(m.cursor, len(items)-1)]
-			if m.tab == 0 {
-				right = []string{"Environment", "", fmt.Sprintf("%d identities", len(m.config.Identities)), fmt.Sprintf("%d package managers", len(m.config.Packages)), fmt.Sprintf("%d developer tools", len(m.config.Tools)), "", "Selected action", item, ""}
-				descriptions := []string{"Inspect and switch your global Git identity.", "Snapshot installed software or apply your saved environment.", "Archive identities, SSH keys, packages, and tools.", "Merge a portable archive into this computer."}
-				right = append(right, strings.Split(ansi.Wrap(descriptions[min(m.cursor, 3)], w-x-4, ""), "\n")...)
-			} else if m.tab == 1 {
-				id := m.config.Identities[item]
-				right = append(right, item, "", "Name", id["name"], "", "Email", id["email"], "", "Signing key", id["signing_key"], "", "enter  Switch identity")
-			} else {
-				right = append(right, strings.Split(item, " / ")...)
-				right = append(right, "", "s  Scan this computer", "a  Apply configuration")
-			}
-		}
-		for y := 4; y < h-4; y++ {
-			left := ansi.Truncate(rows[y], x-2, "")
-			left += strings.Repeat(" ", max(0, x-2-ansi.StringWidth(left)))
-			text := ""
-			if y-4 < len(right) {
-				text = right[y-4]
-			}
-			rows[y] = left + m.paint("│ ", "#3E3E3E", false) + ansi.Truncate(text, w-x-2, "…")
-		}
-	}
-	if len(content) == 0 {
-		border := func(s string) string { return m.paint(s, "#3E3E3E", false) }
-		put(3, " "+border("╭"+strings.Repeat("─", w-4)+"╮"))
-		for y := 4; y < h-2; y++ {
-			inside := ansi.Cut(rows[y], 2, w-2)
-			inside += strings.Repeat(" ", max(0, w-4-ansi.StringWidth(inside)))
-			rows[y] = " " + border("│") + inside + border("│") + " "
-		}
-		put(h-2, " "+border("╰"+strings.Repeat("─", w-4)+"╯"))
-	}
-	if m.app.Dry {
-		footer = "  DRY RUN · " + strings.TrimSpace(footer)
-	}
-	put(h-1, m.paint(footer, "#999999", false))
-	if !m.app.NoColor {
-		for i, row := range rows {
-			bg := "#1E1E1E"
-			if i == 0 || i == h-1 {
-				bg = "#2A323C"
-			}
-			style := lipgloss.NewStyle().Background(lipgloss.Color(bg)).Foreground(lipgloss.Color("#EDEDED"))
-			rows[i] = style.Render(row + strings.Repeat(" ", max(0, w-ansi.StringWidth(row))))
-		}
-	}
-	return strings.Join(rows, "\n")
 }
 
 // Run starts the alternate-screen dashboard.

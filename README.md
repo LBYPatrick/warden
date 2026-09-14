@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey" alt="Platform" />
 </p>
 
-Warden captures Git identities, SSH configuration, packages, and developer tools in a portable JSON5 file. A native Go executable provides both a CLI and an interactive dashboard, with the dark surfaces, blue accents, section navigation, and detail panes used by [Ashley](https://github.com/LBYPatrick/ashley).
+Warden captures Git identities, SSH configuration, packages, and developer tools in a portable JSON5 file. A native Go executable provides both a CLI and an interactive dashboard, with the sidebar navigation, rounded detail panels, and configurable appearance used by [Ashley](https://github.com/LBYPatrick/ashley).
 
 ## Install
 
@@ -60,15 +60,16 @@ With redirected input/output, bare `warden` prints help. `warden tui` requires a
 
 ## Dashboard
 
-The TUI has Overview, Identities, Packages, Archives, and Maintenance sections. Wide terminals show selection details beside the list; narrow terminals use a compact layout.
+The TUI has Overview, Identities, Packages, Archives, Maintenance, and Settings sections. Wide terminals show selection details beside the list; narrow terminals use a compact layout.
 
 | Key | Action |
 |---|---|
 | `←` / `→`, Tab / Shift-Tab | Change section |
-| `1`–`5` | Jump to a section |
+| `1`–`6` | Jump to a section |
 | `↑` / `↓`, `j` / `k` | Move through entries |
 | Enter | Open or review selected action |
 | `/` | Filter entries |
+| `t` | Open appearance settings |
 | `r` | Reload configuration |
 | `s` in Packages | Scan installed packages |
 | `a` in Packages | Review and apply configuration |
@@ -77,6 +78,8 @@ The TUI has Overview, Identities, Packages, Archives, and Maintenance sections. 
 | `q` / Ctrl-C | Quit |
 
 Identity switches, package application, restores, backups, updates, and maintenance actions have a review screen. Restore accepts an archive path, including spaces. Operations show their result or error in a scrollable panel. Start with `warden --dry-run` to preview actions.
+
+Press `t` (or `6`) to choose **light/dark mode** and an accent: blue, green, purple, orange, rose, cyan, ocean, sunset, grape, or forest. Use ↑/↓ and Enter to apply a choice immediately. Preferences are saved in `~/.warden/theme.json`, independently of your portable system configuration. `NO_COLOR` and `WARDEN_NO_COLOR` suppress styling; `--dry-run` previews appearance without saving it.
 
 ## Configuration
 
