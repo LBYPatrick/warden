@@ -152,25 +152,22 @@ func (m model) View() string {
 			f.text(detail, m.details(), a.base, 0)
 		}
 		items := m.items()
-		start := max(0, m.cursor-list.h+1)
-		for i := start; i < min(len(items), start+list.h); i++ {
-			text := items[i]
-			prefix := "  "
-			style := a.base
-			if m.tab == 5 {
-				selected := (i == 0 && m.theme.Mode == "dark") || (i == 1 && m.theme.Mode == "light") || (i >= 2 && presets[i-2] == m.theme.Preset)
-				marker := "○ "
-				if selected {
-					marker = "● "
+		if m.tab == 5 {
+			m.settingsList(f, list, a)
+		} else {
+			start := max(0, m.cursor-list.h+1)
+			for i := start; i < min(len(items), start+list.h); i++ {
+				text := items[i]
+				prefix := "  "
+				style := a.base
+
+				if i == m.cursor {
+					prefix = "› "
+					style = a.selected
 				}
-				text = marker + strings.ToUpper(text[:1]) + text[1:]
+				text = ansi.Truncate(prefix+text, list.w, "…")
+				f.put(list.x, list.y+i-start, style.Render(text+strings.Repeat(" ", max(0, list.w-ansi.StringWidth(text)))))
 			}
-			if i == m.cursor {
-				prefix = "› "
-				style = a.selected
-			}
-			text = ansi.Truncate(prefix+text, list.w, "…")
-			f.put(list.x, list.y+i-start, style.Render(text+strings.Repeat(" ", max(0, list.w-ansi.StringWidth(text)))))
 		}
 		if len(items) == 0 {
 			f.text(list, "No entries. "+map[int]string{1: "Add identities to your config.", 2: "Press s to scan installed packages."}[m.tab], a.muted, 0)

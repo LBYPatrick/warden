@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Separate TUI appearance settings into Mode and Accent color groups.
+
 ## [2.0.0] - 2026-09-13
 
 ### Added
