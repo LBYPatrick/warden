@@ -2,24 +2,13 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- Select the visible action when filtering Overview or Maintenance in the TUI.
-
-- Recognize copied and symlinked Go development launchers during migration, including legacy symlinks into checkouts already updated to Go.
-
-### Added
-
-- Match Ashley’s sidebar, selection rows, and rounded TUI panels; add persistent light/dark mode and ten accent presets under Settings.
-
-- Automatically migrate Python installations and stale development launchers through the normal remote installer, with backups and PATH repair.
-
-- Add an Ashley-style Python-to-Go migration helper with native binary validation, launcher backups, legacy symlink detection, and PATH repair while preserving configuration and keys.
-
 ## [2.0.0] - 2026-09-13
 
 ### Added
 
+- Match Ashley’s sidebar, selection rows, and rounded TUI panels; add persistent light/dark mode and ten accent presets under Settings.
+- Automatically migrate Python installations and stale development launchers through the normal remote installer, with backups and PATH repair.
+- Add an Ashley-style Python-to-Go migration helper with native binary validation, launcher backups, legacy symlink detection, and PATH repair while preserving configuration and keys.
 - Add a native Go CLI and an Ashley-inspired interactive dashboard for identities, packages, archives, and maintenance.
 - Add checksum-verified binary installation and updates, explicit release version selection, and macOS/Linux ARM64/x86-64 release artifacts.
 - Add machine-readable identity listings, archive validation, and Go regression tests.
@@ -36,6 +25,8 @@
 
 ### Fixed
 
+- Select the visible action when filtering Overview or Maintenance in the TUI.
+- Recognize copied and symlinked Go development launchers during migration, including legacy symlinks into checkouts already updated to Go.
 - Restore Homebrew bulk/live installation and retries, APT refresh/fallback behavior, contextual help, derived identity details, and Mole native previews.
 - Preserve pnpm inventory, Xcode toolchain detection, and Linux formula scanning when cask inventory is unsupported.
 - Keep successful package saves when a later manager fails; avoid requiring config for standalone installation.
