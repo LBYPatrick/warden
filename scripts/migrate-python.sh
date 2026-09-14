@@ -106,7 +106,7 @@ else
     curl --retry 3 -fsSL "https://raw.githubusercontent.com/$repo/main/scripts/install.sh" -o "$tmp/install.sh"
     version_args=()
     if [[ -n "$version" ]]; then version_args=(--version "$version"); fi
-    bash "$tmp/install.sh" --install-dir "$tmp" ${version_args[@]+"${version_args[@]}"}
+    WARDEN_MIGRATION_STAGING=1 bash "$tmp/install.sh" --install-dir "$tmp" ${version_args[@]+"${version_args[@]}"}
 fi
 # Reject scripts before executing a supplied binary, including Python/shell wrappers.
 magic="$(od -An -tx1 -N4 "$tmp/warden" | tr -d ' \n')"

@@ -28,16 +28,16 @@ Version 2.0.0 is the first native Go release. The installer supports macOS and L
 
 Use `--install-dir DIR`, `WARDEN_INSTALL_DIR`, or `WARDEN_VERSION` to customize installation. Ensure `~/.local/bin` is on `PATH`.
 
-**Migration from Python:** use the migration helper to back up and replace the old launcher:
+**Migration from Python:** the normal remote installer automatically detects and migrates old installations:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/migrate-python.sh \
+curl -fsSL https://raw.githubusercontent.com/LBYPatrick/warden/main/scripts/remote-install.sh \
   | bash -s -- --version 2.0.0
 ```
 
-It detects legacy checkout symlinks, backs up replaced launchers under `~/.warden/migrations/python-to-go-*`, and atomically installs the native binary. It also redirects a writable legacy symlink earlier on PATH when it points to the same checkout, or a recognized Go development wrapper (copied or symlinked). It never executes the old launcher or needs Python, uv, Go, or git.
+The binary installer detects legacy checkout symlinks, backs up replaced launchers under `~/.warden/migrations/python-to-go-*`, and atomically installs the native binary. It also redirects recognized Python or Go wrappers earlier on PATH, whether copied or symlinked. Protected launchers cause an error before replacement with instructions to put the install directory first on PATH. It never executes the old launcher or needs Python, uv, Go, or git.
 
-For an offline migration, run `bash scripts/migrate-python.sh --binary /path/to/warden`. Optional `--source CHECKOUT` records an explicit legacy source directory; `--install-dir DIR` changes the destination. `--binary` and `--version` are mutually exclusive. The release-download route installs current completions and the man page; `--binary` replaces only the launcher.
+The standalone helper remains available for offline or explicit-source migrations. Run `bash scripts/migrate-python.sh --binary /path/to/warden`. Optional `--source CHECKOUT` records an explicit legacy source directory; `--install-dir DIR` changes the destination. `--binary` and `--version` are mutually exclusive. The release-download route installs current completions and the man page; `--binary` replaces only the launcher.
 
 Configs, keys, archives, the checkout, and shared runtimes are retained. No config conversion is required. A checkout-local `warden.jsonc` remains in place: use `-c /path/to/checkout/warden.jsonc` if that was your active config. The backup's `origin.txt` records original launcher paths; `warden` and optional `path-warden` preserve replaced files or symlinks. Start a new shell or run `hash -r` after migration. The script reports unrelated PATH launchers and stops before replacement if a recognized shadowing launcher's directory is not writable.
 

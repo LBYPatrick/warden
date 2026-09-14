@@ -8,6 +8,8 @@
 
 ### Added
 
+- Automatically migrate Python installations and stale development launchers through the normal remote installer, with backups and PATH repair.
+
 - Add an Ashley-style Python-to-Go migration helper with native binary validation, launcher backups, legacy symlink detection, and PATH repair while preserving configuration and keys.
 
 ## [2.0.0] - 2026-09-13
