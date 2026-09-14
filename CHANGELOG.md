@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Select the visible action when filtering Overview or Maintenance in the TUI.
+
 - Recognize copied and symlinked Go development launchers during migration, including legacy symlinks into checkouts already updated to Go.
 
 ### Added

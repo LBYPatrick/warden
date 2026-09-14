@@ -329,7 +329,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.confirm = "backup:" + mods
 				}
 			case 4:
-				if m.cursor == 0 {
+				if item == "Update Warden" {
 					m.confirm = "update"
 				} else {
 					m.confirm = "mole:" + strings.ToLower(strings.TrimPrefix(item, "Mole "))

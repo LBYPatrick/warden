@@ -73,3 +73,16 @@ func TestRestoreFormAndEmptyIdentities(t *testing.T) {
 		t.Fatal("restore must review the complete path")
 	}
 }
+
+func TestFilteredMaintenanceSelectsVisibleAction(t *testing.T) {
+	a := app.New("test")
+	a.Home = t.TempDir()
+	a.Platform = "darwin"
+	m := newModel(a)
+	m.tab = 4
+	m.filter = "clean"
+	next, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || next.(model).confirm != "mole:clean" {
+		t.Fatal("filtered maintenance chose a different action")
+	}
+}
