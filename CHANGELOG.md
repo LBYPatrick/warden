@@ -2,10 +2,6 @@
 
 ## [Unreleased]
 
-### Changed
-
-- Separate TUI appearance settings into Mode and Accent color groups.
-
 ## [2.0.0] - 2026-09-13
 
 ### Added
@@ -21,6 +17,7 @@
 
 ### Changed
 
+- Separate TUI appearance settings into Mode and Accent color groups.
 - Replace the Python runtime and source-based installation with native Go binaries.
 - Refresh CLI output, completions, and installation documentation.
 - Replace branch-based self-update with binary release selection.
