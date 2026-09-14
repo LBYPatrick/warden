@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Show a download progress bar during interactive binary installation; keep redirected and CI output quiet.
+
 ## [2.0.0] - 2026-09-13
 
 ### Added

@@ -140,7 +140,11 @@ case "${WARDEN_USE_CN:-}" in 1|true|yes|TRUE|YES) url="https://ghp.ci/$url" ;; e
 tmp="$(mktemp -d)"
 candidate=""
 trap 'rm -rf "$tmp"; if [[ -n "$candidate" ]]; then rm -f "$candidate"; fi' EXIT
-curl --retry 3 -fsSL "$url/$archive" -o "$tmp/$archive"
+# The bootstrap is commonly piped into bash, so detect the terminal on stderr.
+# Only the archive transfer has meaningful progress; metadata stays quiet.
+download_flags=(-fsSL)
+if [[ -t 2 ]]; then download_flags=(-fSL --progress-bar); fi
+curl --retry 3 "${download_flags[@]}" "$url/$archive" -o "$tmp/$archive"
 curl --retry 3 -fsSL "$url/$archive.sha256" -o "$tmp/$archive.sha256"
 (
     cd "$tmp"
